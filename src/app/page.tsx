@@ -52,8 +52,11 @@ export default function Home() {
     <div className="site-shell">
       <header className="site-header">
         <a className="wordmark" href="#inicio" aria-label="L’Italia Barber, inicio">
-          <span className="wordmark__name">L’ITALIA</span>
-          <span className="wordmark__descriptor">BARBER</span>
+          <Image className="wordmark__logo" src="/images/logobarber.png" alt="" width={48} height={48} />
+          <span className="wordmark__text">
+            <span className="wordmark__name">L’ITALIA</span>
+            <span className="wordmark__descriptor">BARBER</span>
+          </span>
         </a>
         <nav className="desktop-nav" aria-label="Navegación principal">
           <a href="#inicio">Inicio</a>
@@ -273,8 +276,11 @@ export default function Home() {
 
       <footer className="site-footer">
         <a className="wordmark wordmark--footer" href="#inicio" aria-label="L’Italia Barber, volver al inicio">
-          <span className="wordmark__name">L’ITALIA</span>
-          <span className="wordmark__descriptor">BARBER</span>
+          <Image className="wordmark__logo" src="/images/logobarber.png" alt="" width={48} height={48} />
+          <span className="wordmark__text">
+            <span className="wordmark__name">L’ITALIA</span>
+            <span className="wordmark__descriptor">BARBER</span>
+          </span>
         </a>
         <p className="site-footer__motto">Estilo. Servicio. Propósito</p>
         <nav aria-label="Enlaces del pie de página">
