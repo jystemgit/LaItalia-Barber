@@ -17,7 +17,7 @@ Abrir `http://localhost:3000`.
 
 ## Producción
 
-Definir `NEXT_PUBLIC_SITE_URL` con el dominio HTTPS público real en el entorno de despliegue. Se usa para canonical, Open Graph y sitemap. Un build de producción falla con un mensaje explícito si falta, para evitar publicar metadata de `localhost` o un sitemap vacío. En desarrollo local se usa `http://localhost:3000`.
+Opcional: definir `NEXT_PUBLIC_SITE_URL` con el dominio HTTPS público real en el entorno de despliegue. Se usa para canonical, Open Graph y sitemap. Si falta, el build igual funciona pero esos valores usan `http://localhost:3000` como fallback y el sitemap queda vacío.
 
 Antes de desplegar, ejecutar:
 
