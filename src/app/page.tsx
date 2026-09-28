@@ -1,5 +1,6 @@
 import Image from "next/image";
 import BookingFlow from "@/app/components/BookingFlow";
+import AccountLink from "@/app/components/AccountLink";
 import MobileMenu from "@/app/components/MobileMenu";
 import { business } from "@/lib/business";
 
@@ -65,6 +66,7 @@ export default function Home() {
           <a href="#reservas">Reservas</a>
           <a href="#contacto">Contacto</a>
         </nav>
+        <AccountLink className="header-account button--reserve" />
         <a className="header-booking button--reserve" href="#reservas">
           Reservar turno
         </a>
@@ -109,13 +111,12 @@ export default function Home() {
         <section className="philosophy section-pad" id="experiencia" aria-labelledby="philosophy-title">
           <div className="philosophy__image-wrap">
             <Image
-              src="/images/experiencia-editorial.jpg"
-              alt="Barbero trabajando con atención al detalle, imagen ilustrativa"
+              src="/images/img5.jpeg"
+              alt="El barbero atendiendo a un cliente en L’Italia Barber"
               fill
               sizes="(max-width: 760px) 100vw, 48vw"
               loading="lazy"
             />
-            <span className="image-note">IMAGEN ILUSTRATIVA · A REEMPLAZAR</span>
           </div>
           <div className="philosophy__copy">
             <p className="eyebrow">EL ESTILO TAMBIÉN SE ESCUCHA</p>
@@ -143,8 +144,8 @@ export default function Home() {
               <figure>
                 <div className="experience-gallery__image">
                   <Image
-                    src="/images/corte-referencia.jpg"
-                    alt="Corte masculino, fotografía editorial de referencia"
+                    src="/images/img2.jpeg"
+                    alt="Vista posterior de un corte masculino en proceso"
                     fill
                     sizes="(max-width: 760px) 100vw, 33vw"
                     loading="lazy"
@@ -154,8 +155,8 @@ export default function Home() {
               <figure>
                 <div className="experience-gallery__image">
                   <Image
-                    src="/images/experiencia-editorial.jpg"
-                    alt="Barbero trabajando, fotografía editorial de referencia"
+                    src="/images/img1.jpeg"
+                    alt="Trabajo de barba con navaja en el sillón de barbería"
                     fill
                     sizes="(max-width: 760px) 100vw, 33vw"
                     loading="lazy"
@@ -165,8 +166,8 @@ export default function Home() {
               <figure>
                 <div className="experience-gallery__image">
                   <Image
-                    src="/images/detalle-referencia.jpg"
-                    alt="Detalle de barbería, fotografía editorial de referencia"
+                    src="/images/img3.jpeg"
+                    alt="Detalle del perfilado de barba"
                     fill
                     sizes="(max-width: 760px) 100vw, 33vw"
                     loading="lazy"
@@ -205,7 +206,15 @@ export default function Home() {
         </section>
 
         <section className="pause" aria-labelledby="pause-title">
-          <div className="pause__image" role="img" aria-label="Texturas cálidas de una barbería, imagen ilustrativa"></div>
+          <div className="pause__image">
+            <Image
+              src="/images/img4.jpeg"
+              alt="Herramientas profesionales de barbería"
+              fill
+              sizes="(max-width: 760px) 100vw, 50vw"
+              loading="lazy"
+            />
+          </div>
           <div className="pause__copy">
             <p className="eyebrow eyebrow--light">UN MOMENTO PARA VOS</p>
             <h2 id="pause-title">Más que<br />una <em>barbería</em></h2>
@@ -232,7 +241,7 @@ export default function Home() {
             <h2 id="booking-title">Hagamos un<br /><em>espacio para vos</em></h2>
             <p>Contanos qué estás buscando y coordinamos el mejor momento para atenderte</p>
           </div>
-          <BookingFlow services={business.services.map((service) => service.name)} />
+          <BookingFlow />
         </section>
 
         <section className="contact" id="contacto" aria-labelledby="contact-title">
@@ -288,6 +297,7 @@ export default function Home() {
           <a href="#servicios">Servicios</a>
           <a href="#reservas">Reservas</a>
           <a href="#contacto">Contacto</a>
+          <a href="/ingresar">Mi cuenta</a>
           <a href={business.instagramUrl} target="_blank" rel="noreferrer">Instagram</a>
         </nav>
         <span className="site-footer__copyright">© {new Date().getFullYear()} L’Italia Barber</span>

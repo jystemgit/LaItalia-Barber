@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import AccountLink from "@/app/components/AccountLink";
 
 const navigationItems = [
   ["Inicio", "#inicio"],
@@ -67,6 +68,7 @@ export default function MobileMenu() {
             {label}
           </a>
         ))}
+        <AccountLink onNavigate={() => setIsOpen(false)} />
       </nav>
     </div>
   );

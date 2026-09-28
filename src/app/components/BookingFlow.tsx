@@ -1,163 +1,117 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { business } from "@/lib/business";
+import { useEffect, useState } from "react";
 
-type BookingFlowProps = {
-  services: readonly string[];
-};
+type Service = { id: string; name: string; description: string; duration_minutes: number };
+type Customer = { id: string; first_name: string; last_name: string; email: string; phone: string };
 
-const steps = ["Servicio", "Fecha", "Tus datos"];
-
-function getLocalDate() {
-  const now = new Date();
-  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return localDate.toISOString().slice(0, 10);
+async function readResponse(response: Response) {
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "No se pudo completar la operación");
+  return data;
 }
 
-export default function BookingFlow({ services }: BookingFlowProps) {
-  const [step, setStep] = useState(0);
-  const [selectedService, setSelectedService] = useState("");
+export default function BookingFlow() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState("");
-  const [dateError, setDateError] = useState("");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [slots, setSlots] = useState<string[]>([]);
+  const [time, setTime] = useState("");
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
 
-  function continueToDetails() {
-    if (!date) {
-      setDateError("Elegí una fecha para continuar");
-      return;
+  useEffect(() => {
+    fetch("/api/services").then(readResponse).then((data) => {
+      setServices(data.services);
+      try {
+        const saved = JSON.parse(sessionStorage.getItem("bookingSelection") || "null") as { serviceId?: string; date?: string; time?: string } | null;
+        sessionStorage.removeItem("bookingSelection");
+        if (saved?.serviceId && saved.date && data.services.some((item: Service) => item.id === saved.serviceId)) {
+          setServiceId(saved.serviceId);
+          setDate(saved.date);
+          void fetch(`/api/availability?date=${encodeURIComponent(saved.date)}&serviceId=${encodeURIComponent(saved.serviceId)}`)
+            .then(readResponse).then((result) => {
+              setSlots(result.slots);
+              if (saved.time && result.slots.includes(saved.time)) setTime(saved.time);
+              else setMessage("El horario elegido ya no está disponible. Seleccioná otro");
+            }).catch((error) => setMessage(error.message));
+        }
+      } catch { sessionStorage.removeItem("bookingSelection"); }
+    }).catch((error) => setMessage(error.message));
+    fetch("/api/me").then((response) => response.ok ? response.json() : null).then((data) => setCustomer(data?.user ?? null)).catch(() => {});
+  }, []);
+
+  async function loadSlots(nextDate: string, nextService: string) {
+    setSlots([]);
+    setTime("");
+    setMessage("");
+    if (!nextDate || !nextService) return;
+    setLoading(true);
+    try {
+      const data = await readResponse(await fetch(`/api/availability?date=${encodeURIComponent(nextDate)}&serviceId=${encodeURIComponent(nextService)}`));
+      setSlots(data.slots);
+      if (!data.slots.length) setMessage("No hay horarios disponibles para ese día");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo comprobar disponibilidad");
+    } finally {
+      setLoading(false);
     }
-    if (date < getLocalDate()) {
-      setDateError("La fecha tiene que ser hoy o posterior");
-      return;
-    }
-    setDateError("");
-    setStep(2);
   }
 
-  function submitInquiry(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const message = [
-      "Hola, L’Italia Barber. Quisiera consultar disponibilidad para un turno",
-      `Servicio: ${selectedService}`,
-      `Fecha que me interesa: ${date}`,
-      `Nombre: ${name.trim()}`,
-      `Teléfono: ${phone.trim()}`,
-      "Entiendo que el turno queda pendiente de confirmación",
-    ].join("\n");
-    const url = `${business.whatsappUrl}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+  async function confirm() {
+    setLoading(true);
+    setMessage("");
+    try {
+      const data = await readResponse(await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serviceId, date, time }),
+      }));
+      setConfirmed(true);
+      setMessage(`Reserva confirmada. Identificador: ${data.id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo confirmar");
+      await loadSlots(date, serviceId);
+    } finally {
+      setLoading(false);
+    }
   }
 
+  const service = services.find((item) => item.id === serviceId);
   return (
-    <div className="booking-form" aria-label="Consulta de turno">
-      <ol className="booking-progress" aria-label="Pasos de la consulta">
-        {steps.map((label, index) => (
-          <li className={index <= step ? "is-current" : ""} key={label}>
-            {label}
-          </li>
-        ))}
-      </ol>
-
-      {step === 0 && (
+    <div className="booking-form" aria-label="Reservar turno">
+      {confirmed ? (
+        <div className="booking-step" role="status">
+          <h3>Tu turno está confirmado</h3>
+          <p>{service?.name} · {date} · {time}</p>
+          <p>{message}</p>
+          <a className="button button--light" href="/mi-cuenta">Ver mi cuenta</a>
+        </div>
+      ) : (
         <div className="booking-step">
-          <fieldset>
-            <legend>¿Qué te gustaría hacerte?</legend>
-            <div className="booking-services">
-              {services.map((service) => (
-                <button
-                  className={`booking-service ${selectedService === service ? "is-selected" : ""}`}
-                  type="button"
-                  aria-pressed={selectedService === service}
-                  onClick={() => setSelectedService(service)}
-                  key={service}
-                >
-                  <span>{service}</span>
-                </button>
-              ))}
+          <label className="field-label" htmlFor="booking-service">Servicio</label>
+          <select className="booking-input" id="booking-service" value={serviceId} onChange={(event) => { setServiceId(event.target.value); void loadSlots(date, event.target.value); }}>
+            <option value="">Seleccioná un servicio</option>
+            {services.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.duration_minutes} min</option>)}
+          </select>
+          <label className="field-label" htmlFor="booking-date">Fecha</label>
+          <input className="booking-input" id="booking-date" type="date" value={date} min={new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })} onChange={(event) => { setDate(event.target.value); void loadSlots(event.target.value, serviceId); }} />
+          {date && serviceId && <>
+            <p className="field-label">Horarios disponibles</p>
+            <div className="booking-services" role="group" aria-label="Horarios disponibles">
+              {slots.map((slot) => <button className={`booking-service${time === slot ? " is-selected" : ""}`} type="button" aria-pressed={time === slot} onClick={() => setTime(slot)} key={slot}>{slot}</button>)}
             </div>
-          </fieldset>
-          <button
-            className="button button--light booking-next"
-            type="button"
-            disabled={!selectedService}
-            onClick={() => setStep(1)}
-          >
-            Continuar
-          </button>
+          </>}
+          {message && <p className="availability-note" role="status">{message}</p>}
+          {time && !customer && <p className="availability-note">Para confirmar, <a href={`/ingresar?next=${encodeURIComponent("/#reservas")}`} onClick={() => sessionStorage.setItem("bookingSelection", JSON.stringify({ serviceId, date, time }))}>iniciá sesión</a> o <a href="/registrarse" onClick={() => sessionStorage.setItem("bookingSelection", JSON.stringify({ serviceId, date, time }))}>creá tu cuenta</a>. Tu horario se confirma cuando finalices la reserva</p>}
+          {time && customer && <div className="booking-confirm">
+            <p><strong>Revisá tu turno</strong><br />{service?.name} · {date} · {time} · {service?.duration_minutes} minutos<br />{customer.first_name} {customer.last_name} · {customer.phone}</p>
+            <button className="button button--light" type="button" disabled={loading} onClick={confirm}>{loading ? "Confirmando..." : "Confirmar reserva"}</button>
+          </div>}
+          {loading && !time && <p className="availability-note">Consultando horarios...</p>}
         </div>
-      )}
-
-      {step === 1 && (
-        <div className="booking-step">
-          <label className="field-label" htmlFor="booking-date">¿Qué día te gustaría venir?</label>
-          <input
-            className="booking-input"
-            id="booking-date"
-            type="date"
-            value={date}
-            onChange={(event) => {
-              setDate(event.target.value);
-              setDateError("");
-            }}
-            aria-describedby={dateError ? "date-error availability-note" : "availability-note"}
-            aria-invalid={Boolean(dateError)}
-          />
-          {dateError && <p className="field-error" id="date-error">{dateError}</p>}
-          <p className="availability-note" id="availability-note">
-            Los horarios se coordinan por WhatsApp. El turno queda pendiente hasta recibir confirmación
-          </p>
-          <div className="booking-step__actions">
-            <button className="booking-back" type="button" onClick={() => setStep(0)}>
-              Volver
-            </button>
-            <button className="button button--light" type="button" onClick={continueToDetails}>
-              Continuar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === 2 && (
-        <form className="booking-step" onSubmit={submitInquiry}>
-          <p className="booking-summary">{selectedService} · {date}</p>
-          <label className="field-label" htmlFor="booking-name">Tu nombre</label>
-          <input
-            className="booking-input"
-            id="booking-name"
-            name="name"
-            type="text"
-            autoComplete="name"
-            placeholder="Cómo te llamás"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-          />
-          <label className="field-label" htmlFor="booking-phone">Tu teléfono</label>
-          <input
-            className="booking-input"
-            id="booking-phone"
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            placeholder="Con código de área"
-            value={phone}
-            onChange={(event) => setPhone(event.target.value)}
-            required
-          />
-          <p className="availability-note">
-            Esta consulta abre WhatsApp. No confirma un turno automáticamente.
-          </p>
-          <div className="booking-step__actions">
-            <button className="booking-back" type="button" onClick={() => setStep(1)}>
-              Volver
-            </button>
-            <button className="button button--light" type="submit">
-              Enviar consulta
-            </button>
-          </div>
-        </form>
       )}
     </div>
   );

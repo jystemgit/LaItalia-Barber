@@ -88,7 +88,8 @@ summary:focus-visible {
 	z-index: 20;
 	top: 0;
 	display: grid;
-	grid-template-columns: 170px 1fr auto;
+	grid-template-columns: 170px minmax(0, 1fr) auto auto;
+	column-gap: clamp(10px, 1vw, 16px);
 	align-items: center;
 	height: 88px;
 	margin-bottom: -88px;
@@ -153,6 +154,7 @@ summary:focus-visible {
 	color: #d0c1a3;
 }
 
+.header-account,
 .header-booking {
 	display: inline-flex;
 	min-height: 46px;
@@ -168,6 +170,7 @@ summary:focus-visible {
 	text-transform: uppercase;
 	border-radius: 6px;
 	transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+	white-space: nowrap;
 }
 
 .header-booking:hover,
@@ -548,10 +551,20 @@ h2 {
 }
 
 .pause__image {
+	position: relative;
 	min-height: 610px;
-	background-image: linear-gradient(0deg, rgba(22, 25, 20, 0.15), rgba(22, 25, 20, 0.15)), url("/images/barberia-editorial.jpg");
-	background-position: center;
-	background-size: cover;
+	overflow: hidden;
+}
+
+.pause__image img {
+	object-fit: cover;
+}
+
+.pause__image::after {
+	position: absolute;
+	inset: 0;
+	background: rgba(22, 25, 20, 0.15);
+	content: "";
 }
 
 .pause__copy {
@@ -1021,7 +1034,8 @@ h2 {
 
 @media (max-width: 1100px) {
 	.site-header {
-		grid-template-columns: 130px 1fr auto;
+		grid-template-columns: 130px minmax(0, 1fr) auto auto;
+		column-gap: 9px;
 		padding-right: 4vw;
 		padding-left: 4vw;
 	}
@@ -1034,6 +1048,7 @@ h2 {
 		font-size: 12px;
 	}
 
+	.header-account,
 	.header-booking {
 		padding-right: 11px;
 		padding-left: 11px;
@@ -1081,7 +1096,8 @@ h2 {
 		font-size: 8px;
 	}
 
-	.desktop-nav {
+	.desktop-nav,
+	.header-account {
 		display: none;
 	}
 
@@ -1367,7 +1383,10 @@ h2 {
 
 	.pause__image {
 		min-height: 320px;
-		background-position: center 43%;
+	}
+
+	.pause__image img {
+		object-position: center 43%;
 	}
 
 	.pause__copy {
@@ -1571,4 +1590,97 @@ h2 {
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
 	}
+}
+
+.app-shell {
+	min-height: 100svh;
+	padding: 32px clamp(20px, 5vw, 76px) 80px;
+	background: #f3f0e9;
+	color: #1e211e;
+}
+
+.app-shell h1,
+.app-shell h2,
+.app-shell h3 {
+	font-family: var(--serif);
+	font-weight: 500;
+	line-height: 1.05;
+}
+
+.app-shell h1 { font-size: clamp(42px, 5vw, 64px); margin: 20px 0 8px; }
+.app-shell h2 { font-size: 32px; margin: 0 0 22px; }
+.app-shell h3 { font-size: 24px; margin: 28px 0 12px; }
+
+.app-back, .app-top a { font-family: var(--serif); font-size: 22px; font-weight: 600; }
+.app-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.account-top { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.account-top__brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); }
+.account-top__brand img { width: 42px; height: 42px; object-fit: contain; filter: invert(1); mix-blend-mode: multiply; }
+.account-top__brand span { display: grid; gap: 4px; line-height: 1; }
+.account-top__brand strong { font-family: var(--serif); font-size: 21px; font-weight: 600; letter-spacing: 0.045em; }
+.account-top__brand small { font-size: 8px; font-weight: 600; letter-spacing: 0.31em; }
+.account-top__actions { display: flex; align-items: center; gap: 10px; }
+.account-top__home { min-height: 40px; padding: 0 13px; font-size: 10px; }
+.account-heading { margin: 38px 0 26px; }
+.account-heading .eyebrow { margin-bottom: 10px; }
+.account-heading h1 { margin: 0; }
+.account-heading > p:last-child { margin: 8px 0 0; color: var(--ink-soft); font-size: 13px; }
+.app-top button, .app-row button, .admin-content button:not(.button), .admin-tabs button {
+	min-height: 38px;
+	padding: 7px 12px;
+	border: 1px solid var(--line);
+	border-radius: 5px;
+	background: transparent;
+	cursor: pointer;
+	font-size: 12px;
+}
+.app-top button:hover, .app-row button:hover, .admin-content button:not(.button):hover { border-color: var(--blue-dark); }
+.auth-shell { display: grid; align-content: start; justify-items: center; gap: 38px; padding-top: 9vh; }
+.auth-shell .app-back { justify-self: center; }
+.auth-shell .app-panel { width: min(100%, 480px); }
+.app-panel { min-width: 0; padding: 31px; border: 1px solid var(--line); border-radius: 6px; background: #fffefa; }
+.auth-shell .app-panel > a { display: block; margin-top: 14px; font-size: 13px; color: var(--blue-dark); }
+.app-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 22px; margin-top: 30px; }
+.app-form { display: grid; gap: 14px; margin: 15px 0 30px; }
+.app-form label, .admin-content label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; }
+.app-form input, .app-form select, .app-form textarea, .admin-content select {
+	width: 100%;
+	min-height: 42px;
+	padding: 8px 10px;
+	border: 1px solid #c4c8c1;
+	border-radius: 4px;
+	background: white;
+	color: var(--ink);
+	font-size: 14px;
+}
+.app-form textarea { min-height: 88px; resize: vertical; }
+.app-form input[type="checkbox"] { width: 18px; min-height: 18px; }
+.app-form .button { justify-self: start; }
+.app-message { padding: 12px 15px; border-left: 3px solid var(--blue); background: #e8eff0; font-size: 13px; }
+.app-row { display: grid; gap: 8px; min-width: 0; padding: 17px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; font-size: 13px; }
+.app-row:last-child { border-bottom: 0; }
+.app-panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 15px; }
+.app-panel-head a { color: var(--blue-dark); font-size: 12px; }
+.admin-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 26px 0; }
+.admin-tabs button.is-active { border-color: var(--bronze); background: #354138; color: white; }
+.admin-content { max-width: 1200px; }
+.admin-content .app-form.app-row { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+.admin-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.admin-metrics p { display: grid; gap: 4px; margin: 0; padding: 18px; border: 1px solid var(--line); }
+.admin-metrics strong { font-family: var(--serif); font-size: 34px; line-height: 1; }
+.admin-metrics span { font-size: 12px; }
+.app-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+
+@media (max-width: 760px) {
+	.app-shell { padding: 20px 20px 70px; }
+	.app-panel { padding: 20px; }
+	.app-columns { grid-template-columns: 1fr; }
+	.admin-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 8px; }
+	.admin-tabs button { flex: 0 0 auto; }
+	.admin-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.admin-content .app-form.app-row { grid-template-columns: 1fr; }
+	.app-top { flex-wrap: wrap; }
+	.account-top { align-items: flex-start; flex-wrap: wrap; }
+	.account-top__actions { flex-wrap: wrap; }
+	.account-heading { margin: 28px 0 22px; }
 }
