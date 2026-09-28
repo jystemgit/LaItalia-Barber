@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ToastNotification, { useToast } from "@/app/components/ToastNotification";
+import { notifyAfterSuccess } from "@/lib/success-notification";
 
 type Service = { id: string; name: string; description: string; duration_minutes: number };
 type Customer = { id: string; first_name: string; last_name: string; email: string; phone: string };
@@ -12,6 +14,7 @@ async function readResponse(response: Response) {
 }
 
 export default function BookingFlow() {
+  const { toast, showToast } = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState("");
@@ -64,11 +67,14 @@ export default function BookingFlow() {
     setLoading(true);
     setMessage("");
     try {
-      const data = await readResponse(await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceId, date, time }),
-      }));
+      const data = await notifyAfterSuccess(
+        fetch("/api/bookings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ serviceId, date, time }),
+        }).then(readResponse),
+        () => showToast("Turno reservado"),
+      );
       setConfirmed(true);
       setMessage(`Reserva confirmada. Identificador: ${data.id}`);
     } catch (error) {
@@ -80,7 +86,8 @@ export default function BookingFlow() {
   }
 
   const service = services.find((item) => item.id === serviceId);
-  return (
+  return <>
+    <ToastNotification toast={toast} />
     <div className="booking-form" aria-label="Reservar turno">
       {confirmed ? (
         <div className="booking-step" role="status">
@@ -108,11 +115,11 @@ export default function BookingFlow() {
           {time && !customer && <p className="availability-note">Para confirmar, <a href={`/ingresar?next=${encodeURIComponent("/#reservas")}`} onClick={() => sessionStorage.setItem("bookingSelection", JSON.stringify({ serviceId, date, time }))}>iniciá sesión</a> o <a href="/registrarse" onClick={() => sessionStorage.setItem("bookingSelection", JSON.stringify({ serviceId, date, time }))}>creá tu cuenta</a>. Tu horario se confirma cuando finalices la reserva</p>}
           {time && customer && <div className="booking-confirm">
             <p><strong>Revisá tu turno</strong><br />{service?.name} · {date} · {time} · {service?.duration_minutes} minutos<br />{customer.first_name} {customer.last_name} · {customer.phone}</p>
-            <button className="button button--light" type="button" disabled={loading} onClick={confirm}>{loading ? "Confirmando..." : "Confirmar reserva"}</button>
+            <button className="button button--reserve" type="button" disabled={loading} onClick={confirm}>{loading ? "Confirmando..." : "Confirmar reserva"}</button>
           </div>}
           {loading && !time && <p className="availability-note">Consultando horarios...</p>}
         </div>
       )}
     </div>
-  );
+  </>;
 }

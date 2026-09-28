@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import AdminBookings from "@/app/components/AdminBookings";
 import AdminGoogleCalendar from "@/app/components/AdminGoogleCalendar";
 import ReviewModeration from "@/app/components/ReviewModeration";
+import ToastNotification, { useToast } from "@/app/components/ToastNotification";
+import { notifyAfterSuccess } from "@/lib/success-notification";
 
 type User = { first_name: string; last_name: string; email: string; phone: string; role: "CUSTOMER" | "ADMIN" };
 type BookingStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
@@ -29,6 +31,7 @@ async function reviewRequest(path: string, method = "GET", body?: object) {
 
 export default function AccountDashboard({ user }: { user: User }) {
   const router = useRouter();
+  const { toast, showToast } = useToast();
   const [profile, setProfile] = useState({ firstName: user.first_name, lastName: user.last_name, phone: user.phone });
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -104,12 +107,19 @@ export default function AccountDashboard({ user }: { user: User }) {
     setCancellingBookingId(booking.id);
     setCancelError("");
     try {
-      const response = await fetch(`/api/bookings/${booking.id}`, { method: "PATCH" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "No se pudo cancelar la reserva");
-      setBookings((current) => current.map((item) => item.id === booking.id ? { ...item, status: "CANCELLED" } : item));
-      setBookingToCancel(null);
-      setMessage(data.message || "Reserva cancelada correctamente");
+      await notifyAfterSuccess(
+        fetch(`/api/bookings/${booking.id}`, { method: "PATCH" }).then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "No se pudo cancelar la reserva");
+          return data;
+        }),
+        () => {
+          setBookings((current) => current.map((item) => item.id === booking.id ? { ...item, status: "CANCELLED" } : item));
+          setBookingToCancel(null);
+          setMessage("");
+          showToast("Turno cancelado");
+        },
+      );
     } catch (error) {
       setCancelError(error instanceof Error ? error.message : "No se pudo cancelar la reserva. Intentá nuevamente.");
     } finally {
@@ -155,6 +165,7 @@ export default function AccountDashboard({ user }: { user: User }) {
   }
 
   return <main className="app-shell account-shell">
+    <ToastNotification toast={toast} />
     <header className="account-top">
       <Link className="account-top__brand" href="/" aria-label="L’Italia Barber, inicio">
         <Image src="/images/logobarber.png" alt="" width={44} height={44} />
