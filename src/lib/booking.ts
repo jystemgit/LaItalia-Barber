@@ -86,6 +86,17 @@ export async function createBooking(customerId: string, date: string, time: stri
   return booked.id;
 }
 
+export async function cancelCustomerBooking(customerId: string, bookingId: string) {
+  const rows = await db()`
+    UPDATE bookings SET status = 'CANCELLED', updated_at = now(),
+      calendar_sync_status = CASE WHEN google_calendar_event_id IS NULL THEN 'DISCONNECTED' ELSE 'PENDING' END
+    WHERE id = ${bookingId} AND customer_id = ${customerId}
+      AND status IN ('PENDING','CONFIRMED') AND starts_at > now()
+    RETURNING id
+  `;
+  return rows[0] as { id: string } | undefined ?? null;
+}
+
 export async function notifyBooking(email: string | undefined, subject: string, text: string) {
   if (!email || !process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return;
   await sendEmail(email, subject, text);

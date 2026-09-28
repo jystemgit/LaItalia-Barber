@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decrypt, encrypt, hashToken, normalizedEmail, randomToken, sameOrigin } from "./security";
 import { calendarEventId, googleAuthorizationUrl } from "./calendar";
+import { customerCancellationAuthorizationError } from "../app/api/bookings/[id]/route";
 
 test("tokens aleatorios, hash y cifrado autenticado", () => {
   process.env.AUTH_SECRET = "local-test-secret-with-at-least-32-characters";
@@ -28,4 +29,11 @@ test("OAuth Google solicita permisos y usa state de un solo uso", () => {
   assert.equal(url.searchParams.get("state"), "random-state");
   assert.equal(url.searchParams.get("access_type"), "offline");
   assert.match(url.searchParams.get("scope") || "", /calendar.events/);
+});
+
+test("ADMIN no puede usar la autorización del endpoint de cancelación CUSTOMER", () => {
+  const adminError = customerCancellationAuthorizationError("ADMIN");
+  assert.ok(adminError);
+  assert.equal(adminError.status, 403);
+  assert.equal(customerCancellationAuthorizationError("CUSTOMER"), null);
 });

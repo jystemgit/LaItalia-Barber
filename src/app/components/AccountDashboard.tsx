@@ -9,7 +9,8 @@ import AdminGoogleCalendar from "@/app/components/AdminGoogleCalendar";
 import ReviewModeration from "@/app/components/ReviewModeration";
 
 type User = { first_name: string; last_name: string; email: string; phone: string; role: "CUSTOMER" | "ADMIN" };
-type Booking = { id: string; starts_at: string; status: string; service_name: string };
+type BookingStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
+type Booking = { id: string; starts_at: string; status: BookingStatus; service_name: string };
 type Review = { id: string; booking_id: string; rating: number; comment: string; status: "PENDING" | "APPROVED" | "REJECTED" };
 
 async function send(path: string, body: object) {
@@ -34,6 +35,20 @@ export default function AccountDashboard({ user }: { user: User }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [editingReview, setEditingReview] = useState<string | null>(null);
+  const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState("");
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (user.role !== "CUSTOMER") return;
+    const initialTimer = window.setTimeout(() => setNow(Date.now()), 0);
+    const clock = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(clock);
+    };
+  }, [user.role]);
 
   async function refreshReviews() {
     if (user.role !== "CUSTOMER") return;
@@ -81,6 +96,25 @@ export default function AccountDashboard({ user }: { user: User }) {
       await refreshReviews();
     } catch (error) { setMessage(error instanceof Error ? error.message : "No se pudo eliminar la reseña"); }
     finally { setBusy(false); }
+  }
+
+  async function cancelBooking() {
+    const booking = bookingToCancel;
+    if (!booking || cancellingBookingId) return;
+    setCancellingBookingId(booking.id);
+    setCancelError("");
+    try {
+      const response = await fetch(`/api/bookings/${booking.id}`, { method: "PATCH" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo cancelar la reserva");
+      setBookings((current) => current.map((item) => item.id === booking.id ? { ...item, status: "CANCELLED" } : item));
+      setBookingToCancel(null);
+      setMessage(data.message || "Reserva cancelada correctamente");
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "No se pudo cancelar la reserva. Intentá nuevamente.");
+    } finally {
+      setCancellingBookingId(null);
+    }
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
@@ -159,6 +193,11 @@ export default function AccountDashboard({ user }: { user: User }) {
         const review = reviews.find((item) => item.booking_id === booking.id);
         return <article className="app-row" key={booking.id}>
           <strong>{booking.service_name}</strong><span>{new Date(booking.starts_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "medium", timeStyle: "short" })} · {booking.status}</span>
+          {(booking.status === "PENDING" || booking.status === "CONFIRMED") && now !== null && new Date(booking.starts_at).getTime() > now && <button
+            type="button"
+            disabled={cancellingBookingId !== null}
+            onClick={() => { setCancelError(""); setBookingToCancel(booking); }}
+          >Cancelar reserva</button>}
           {booking.status === "COMPLETED" && !review && <form className="app-form" onSubmit={(event) => void saveReview(event, booking.id)}>
             <label>Calificación<select name="rating" defaultValue="5">{[5, 4, 3, 2, 1].map((rating) => <option value={rating} key={rating}>{rating} de 5</option>)}</select></label>
             <label>Comentario<textarea name="comment" minLength={1} maxLength={2000} required /></label>
@@ -178,6 +217,20 @@ export default function AccountDashboard({ user }: { user: User }) {
         </article>;
       })}
     </section>}
+    {bookingToCancel && <div className="booking-cancel-overlay">
+      <section className="booking-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="booking-cancel-title" aria-describedby="booking-cancel-description">
+        <h2 id="booking-cancel-title">¿Cancelar esta reserva?</h2>
+        <p id="booking-cancel-description">Esta acción no se puede deshacer.</p>
+        <p><strong>{bookingToCancel.service_name}</strong> · {new Date(bookingToCancel.starts_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "medium", timeStyle: "short" })}</p>
+        {cancelError && <p className="app-message" role="alert">{cancelError}</p>}
+        <div className="booking-cancel-dialog__actions">
+          <button type="button" disabled={cancellingBookingId !== null} onClick={() => setBookingToCancel(null)}>Volver</button>
+          <button type="button" className="button button--reserve" disabled={cancellingBookingId !== null} onClick={() => void cancelBooking()}>
+            {cancellingBookingId === bookingToCancel.id ? "Cancelando..." : "Cancelar reserva"}
+          </button>
+        </div>
+      </section>
+    </div>}
     {user.role === "ADMIN" && <AdminGoogleCalendar />}
     {user.role === "ADMIN" && <AdminBookings />}
     {user.role === "ADMIN" && <ReviewModeration />}

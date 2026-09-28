@@ -1709,6 +1709,14 @@ h2 {
 .calendar-sync-status.is-failed { color: #843f35; font-weight: 600; }
 .admin-booking__sync button { min-height: 32px; padding: 5px 9px; font-size: 11px; }
 .account-reviews { margin-top: 22px; }
+.booking-cancel-overlay { position: fixed; z-index: 80; inset: 0; display: grid; align-items: center; justify-items: center; padding: 20px; background: rgba(18, 21, 19, 0.56); }
+.booking-cancel-dialog { width: min(100%, 460px); padding: 28px; border: 1px solid var(--line); border-radius: 6px; background: #fffefa; box-shadow: 0 18px 55px rgba(17, 22, 18, 0.24); }
+.booking-cancel-dialog h2 { margin: 0 0 14px; font-family: var(--serif); font-size: 30px; font-weight: 500; line-height: 1.1; }
+.booking-cancel-dialog p { margin: 8px 0; font-size: 13px; }
+.booking-cancel-dialog__actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 9px; margin-top: 22px; }
+.booking-cancel-dialog__actions button { min-height: 40px; padding: 8px 13px; border: 1px solid var(--line); border-radius: 5px; background: transparent; cursor: pointer; font-size: 12px; }
+.booking-cancel-dialog__actions button.button--reserve { border-color: var(--olive); background: var(--olive); color: white; }
+.booking-cancel-dialog__actions button:disabled { cursor: wait; opacity: 0.55; }
 .account-review-entry { display: grid; gap: 3px; }
 .account-review-entry p { margin: 2px 0; }
 .account-review-entry > span, .review-moderation__item small, .review-moderation__item > div > span { color: var(--ink-soft); font-size: 12px; }
@@ -1749,6 +1757,7 @@ h2 {
 	.account-heading { margin: 28px 0 22px; }
 	.admin-bookings { padding: 20px; }
 	.admin-calendar { padding: 20px; }
+	.booking-cancel-dialog { padding: 22px; }
 	.admin-booking__main { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
 	.admin-booking__customer { grid-column: 1 / -1; }
 	.admin-booking__service { grid-column: 1; }

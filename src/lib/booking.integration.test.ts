@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import argon2 from "argon2";
 import { DateTime } from "luxon";
 import { db } from "./db";
-import { availableSlots, createBooking, syncBooking } from "./booking";
+import { availableSlots, cancelCustomerBooking, createBooking, syncBooking } from "./booking";
 import { businessZone, calendarEventId, createCalendarEvent, googleBusy } from "./calendar";
 import { verifyEmail, resetPassword, register } from "./auth";
 import { encrypt, hashToken, randomToken } from "./security";
@@ -61,6 +61,35 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     const serviceId = services[0].id as string;
     const serviceDurations = await sql`SELECT name, duration_minutes FROM services ORDER BY name`;
     assert.deepEqual(serviceDurations.map((row) => [row.name, Number(row.duration_minutes)]), [["Barba", 40], ["Corte", 60], ["Corte + barba", 90]]);
+
+    const cancellationBase = DateTime.now().plus({ days: 35 });
+    async function addBooking(customerId: string, status: string, startsAt: DateTime) {
+      const starts = startsAt.toJSDate();
+      const ends = startsAt.plus({ minutes: 90 }).toJSDate();
+      const rows = await sql`
+        INSERT INTO bookings (customer_id, service_id, starts_at, ends_at, status)
+        VALUES (${customerId}, ${serviceId}, ${starts}, ${ends}, ${status})
+        RETURNING id
+      `;
+      return rows[0].id as string;
+    }
+    const pendingBookingId = await addBooking(firstId!, "PENDING", cancellationBase);
+    const confirmedBookingId = await addBooking(firstId!, "CONFIRMED", cancellationBase.plus({ hours: 2 }));
+    const completedBookingId = await addBooking(firstId!, "COMPLETED", cancellationBase.plus({ hours: 4 }));
+    const cancelledBookingId = await addBooking(firstId!, "CANCELLED", cancellationBase.plus({ hours: 6 }));
+    const noShowBookingId = await addBooking(firstId!, "NO_SHOW", cancellationBase.plus({ hours: 8 }));
+    const foreignBookingId = await addBooking(secondId!, "CONFIRMED", cancellationBase.plus({ hours: 10 }));
+    const pastBookingId = await addBooking(firstId!, "CONFIRMED", DateTime.now().minus({ hours: 3 }));
+
+    assert.ok(await cancelCustomerBooking(firstId!, pendingBookingId), "el cliente puede cancelar su reserva PENDING futura");
+    assert.ok(await cancelCustomerBooking(firstId!, confirmedBookingId), "el cliente puede cancelar su reserva CONFIRMED futura");
+    assert.equal(await cancelCustomerBooking(firstId!, completedBookingId), null, "no puede cancelar COMPLETED");
+    assert.equal(await cancelCustomerBooking(firstId!, cancelledBookingId), null, "no puede cancelar CANCELLED");
+    assert.equal(await cancelCustomerBooking(firstId!, noShowBookingId), null, "no puede cancelar NO_SHOW");
+    assert.equal(await cancelCustomerBooking(firstId!, foreignBookingId), null, "no puede cancelar una reserva ajena");
+    assert.equal(await cancelCustomerBooking(firstId!, pastBookingId), null, "no puede cancelar una reserva pasada");
+    const cancelledStates = await sql`SELECT status FROM bookings WHERE id IN (${pendingBookingId}, ${confirmedBookingId}) ORDER BY id`;
+    assert.deepEqual(cancelledStates.map((booking) => booking.status), ["CANCELLED", "CANCELLED"]);
 
     assert.deepEqual((await availableSlots(sunday, serviceId)).slots, []);
     const sundayOpen = DateTime.fromISO(sunday, { zone: businessZone }).set({ hour: 10, minute: 30 });
@@ -121,7 +150,7 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     assert.equal(synced[0].google_calendar_event_id, calendarEventId(syncId));
     await syncBooking(syncId);
     assert.equal(eventCreates, 2, "retry y repetición no duplican evento");
-    await sql`UPDATE bookings SET status = 'CANCELLED', calendar_sync_status = 'PENDING' WHERE id = ${syncId}`;
+    assert.ok(await cancelCustomerBooking(firstId!, syncId));
     await syncBooking(syncId);
     assert.equal((await sql`SELECT calendar_sync_status FROM bookings WHERE id = ${syncId}`)[0].calendar_sync_status, "SYNCED");
     assert.equal(deletes, 1, "cancelar borra solo el evento de la reserva");
