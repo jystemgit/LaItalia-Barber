@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: litalia-barber-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - litalia-postgres-data:/var/lib/postgresql/data
+    networks:
+      - litalia-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    container_name: litalia-barber-migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - litalia-net
+
+  app:
+    build:
+      context: .
+      target: runner
+    container_name: litalia-barber
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET}
+      CRON_SECRET: ${CRON_SECRET}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
+    ports:
+      - "3001:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - litalia-net
+
+volumes:
+  litalia-postgres-data:
+
+networks:
+  litalia-net:
+    driver: bridge
