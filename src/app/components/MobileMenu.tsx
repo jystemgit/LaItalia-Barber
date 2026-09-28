@@ -7,6 +7,7 @@ const navigationItems = [
   ["Inicio", "#inicio"],
   ["Experiencia", "#experiencia"],
   ["Servicios", "#servicios"],
+  ["Reseñas", "#resenas"],
   ["Reservas", "#reservas"],
   ["Contacto", "#contacto"],
 ] as const;

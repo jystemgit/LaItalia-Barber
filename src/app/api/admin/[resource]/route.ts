@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { connectedCalendar, googleCalendars } from "@/lib/calendar";
 import { syncBooking } from "@/lib/booking";
 import { errorResponse, sameOrigin } from "@/lib/security";
+import { deleteReviewAsAdmin, moderateReview } from "@/lib/reviews";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,14 @@ export async function GET(_request: Request, context: RouteContext<"/api/admin/[
     if (resource === "services") return Response.json({ items: await db()`SELECT id, name, description, duration_minutes, active FROM services ORDER BY name` });
     if (resource === "hours") return Response.json({ items: await db()`SELECT weekday, opens_at::text, closes_at::text, slot_minutes FROM business_hours ORDER BY weekday` });
     if (resource === "exceptions") return Response.json({ items: await db()`SELECT id, starts_at, ends_at, kind, note FROM business_exceptions ORDER BY starts_at DESC LIMIT 200` });
-    if (resource === "reviews") return Response.json({ items: await db()`SELECT r.id, r.booking_id, r.rating, r.comment, r.status, r.created_at, p.first_name, p.last_name FROM reviews r JOIN profiles p ON p.user_id = r.customer_id ORDER BY r.created_at DESC LIMIT 200` });
+    if (resource === "reviews") {
+      const status = new URL(_request.url).searchParams.get("status");
+      if (status && !["PENDING", "APPROVED", "REJECTED"].includes(status)) return errorResponse("Estado inválido", 400);
+      const items = status
+        ? await db()`SELECT r.id, r.booking_id, r.rating, r.comment, r.status, r.created_at, u.email, p.first_name, p.last_name FROM reviews r JOIN users u ON u.id = r.customer_id JOIN profiles p ON p.user_id = r.customer_id WHERE r.status = ${status} ORDER BY r.created_at DESC LIMIT 200`
+        : await db()`SELECT r.id, r.booking_id, r.rating, r.comment, r.status, r.created_at, u.email, p.first_name, p.last_name FROM reviews r JOIN users u ON u.id = r.customer_id JOIN profiles p ON p.user_id = r.customer_id ORDER BY r.created_at DESC LIMIT 200`;
+      return Response.json({ items });
+    }
     if (resource === "calendar") return Response.json({ connected: Boolean(await connectedCalendar()), calendars: await googleCalendars(), connection: (await connectedCalendar())?.calendar_id ?? null });
     return errorResponse("Recurso desconocido", 404);
   } catch (error) {
@@ -100,7 +108,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     }
     if (resource === "reviews") {
       const { id, status } = z.object({ id: z.uuid(), status: z.enum(["PENDING", "APPROVED", "REJECTED"]) }).parse(input);
-      await db()`UPDATE reviews SET status = ${status}, updated_at = now() WHERE id = ${id}`;
+      const review = await moderateReview(id, status);
+      if (!review) return errorResponse("Reseña no encontrada", 404);
       return Response.json({ message: "Reseña moderada" });
     }
     if (resource === "calendar") {
@@ -125,8 +134,11 @@ export async function DELETE(request: Request, context: RouteContext<"/api/admin
     const { resource } = await context.params;
     const { id } = z.object({ id: z.uuid() }).parse(await request.json());
     if (resource === "exceptions") await db()`DELETE FROM business_exceptions WHERE id = ${id}`;
+    else if (resource === "reviews") {
+      if (!(await deleteReviewAsAdmin(id))) return errorResponse("Reseña no encontrada", 404);
+    }
     else return errorResponse("Acción desconocida", 404);
-    return Response.json({ message: "Excepción eliminada" });
+    return Response.json({ message: resource === "reviews" ? "Reseña eliminada" : "Excepción eliminada" });
   } catch (error) {
     if (error instanceof z.ZodError) return errorResponse("Datos inválidos", 400);
     console.error("Admin delete error", error);

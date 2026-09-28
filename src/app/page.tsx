@@ -2,6 +2,7 @@ import Image from "next/image";
 import BookingFlow from "@/app/components/BookingFlow";
 import AccountLink from "@/app/components/AccountLink";
 import MobileMenu from "@/app/components/MobileMenu";
+import PublicReviews from "@/app/components/PublicReviews";
 import { business } from "@/lib/business";
 
 const structuredData = {
@@ -63,6 +64,7 @@ export default function Home() {
           <a href="#inicio">Inicio</a>
           <a href="#experiencia">Experiencia</a>
           <a href="#servicios">Servicios</a>
+          <a href="#resenas">Reseñas</a>
           <a href="#reservas">Reservas</a>
           <a href="#contacto">Contacto</a>
         </nav>
@@ -205,6 +207,8 @@ export default function Home() {
           </div>
         </section>
 
+        <PublicReviews />
+
         <section className="pause" aria-labelledby="pause-title">
           <div className="pause__image">
             <Image
@@ -295,6 +299,7 @@ export default function Home() {
         <nav aria-label="Enlaces del pie de página">
           <a href="#inicio">Inicio</a>
           <a href="#servicios">Servicios</a>
+          <a href="#resenas">Reseñas</a>
           <a href="#reservas">Reservas</a>
           <a href="#contacto">Contacto</a>
           <a href="/ingresar">Mi cuenta</a>

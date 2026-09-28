@@ -1,14 +1,24 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import ReviewModeration from "@/app/components/ReviewModeration";
 
 type User = { first_name: string; last_name: string; email: string; phone: string; role: "CUSTOMER" | "ADMIN" };
+type Booking = { id: string; starts_at: string; status: string; service_name: string };
+type Review = { id: string; booking_id: string; rating: number; comment: string; status: "PENDING" | "APPROVED" | "REJECTED" };
 
 async function send(path: string, body: object) {
   const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "No se pudo completar la operación");
+  return data;
+}
+
+async function reviewRequest(path: string, method = "GET", body?: object) {
+  const response = await fetch(path, { method, ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}) });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "No se pudo completar la operación");
   return data;
@@ -19,6 +29,57 @@ export default function AccountDashboard({ user }: { user: User }) {
   const [profile, setProfile] = useState({ firstName: user.first_name, lastName: user.last_name, phone: user.phone });
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [editingReview, setEditingReview] = useState<string | null>(null);
+
+  async function refreshReviews() {
+    if (user.role !== "CUSTOMER") return;
+    try {
+      const [bookingData, reviewData] = await Promise.all([reviewRequest("/api/bookings"), reviewRequest("/api/reviews")]);
+      setBookings(bookingData.bookings);
+      setReviews(reviewData.reviews);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "No se pudieron cargar las reseñas"); }
+  }
+
+  useEffect(() => {
+    if (user.role !== "CUSTOMER") return;
+    let active = true;
+    Promise.all([reviewRequest("/api/bookings"), reviewRequest("/api/reviews")])
+      .then(([bookingData, reviewData]) => {
+        if (active) {
+          setBookings(bookingData.bookings);
+          setReviews(reviewData.reviews);
+        }
+      })
+      .catch((error) => { if (active) setMessage(error instanceof Error ? error.message : "No se pudieron cargar las reseñas"); });
+    return () => { active = false; };
+  }, [user.role]);
+
+  async function saveReview(event: FormEvent<HTMLFormElement>, bookingId: string, reviewId?: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form));
+    setBusy(true);
+    try {
+      await reviewRequest(reviewId ? `/api/reviews/${reviewId}` : "/api/reviews", reviewId ? "PATCH" : "POST", { bookingId, rating: Number(values.rating), comment: values.comment });
+      setMessage(reviewId ? "Reseña actualizada y enviada a moderación" : "Reseña enviada para moderación");
+      setEditingReview(null);
+      await refreshReviews();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "No se pudo guardar la reseña"); }
+    finally { setBusy(false); }
+  }
+
+  async function removeReview(id: string) {
+    if (!confirm("¿Eliminar esta reseña?")) return;
+    setBusy(true);
+    try {
+      await reviewRequest(`/api/reviews/${id}`, "DELETE");
+      setMessage("Reseña eliminada");
+      await refreshReviews();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "No se pudo eliminar la reseña"); }
+    finally { setBusy(false); }
+  }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,5 +150,32 @@ export default function AccountDashboard({ user }: { user: User }) {
         <button type="submit" className="button button--reserve" disabled={busy}>Cambiar contraseña</button>
       </form></section>
     </div>
+    {user.role === "CUSTOMER" && <section className="app-panel account-reviews">
+      <h2>Mis reservas y reseñas</h2>
+      {!bookings.length && <p>Tus reseñas estarán disponibles después de completar una reserva.</p>}
+      {bookings.map((booking) => {
+        const review = reviews.find((item) => item.booking_id === booking.id);
+        return <article className="app-row" key={booking.id}>
+          <strong>{booking.service_name}</strong><span>{new Date(booking.starts_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "medium", timeStyle: "short" })} · {booking.status}</span>
+          {booking.status === "COMPLETED" && !review && <form className="app-form" onSubmit={(event) => void saveReview(event, booking.id)}>
+            <label>Calificación<select name="rating" defaultValue="5">{[5, 4, 3, 2, 1].map((rating) => <option value={rating} key={rating}>{rating} de 5</option>)}</select></label>
+            <label>Comentario<textarea name="comment" minLength={1} maxLength={2000} required /></label>
+            <button type="submit" disabled={busy}>Enviar reseña</button>
+          </form>}
+          {review && <div className="account-review-entry">
+            <p>{review.rating}/5 · {review.comment || "Sin comentario"}</p><span>Estado: {({ PENDING: "En moderación", APPROVED: "Publicada", REJECTED: "No aprobada" })[review.status]}</span>
+            {editingReview === review.id ? <form className="app-form" onSubmit={(event) => void saveReview(event, booking.id, review.id)}>
+              <label>Calificación<select name="rating" defaultValue={String(review.rating)}>{[5, 4, 3, 2, 1].map((rating) => <option value={rating} key={rating}>{rating} de 5</option>)}</select></label>
+              <label>Comentario<textarea name="comment" defaultValue={review.comment} maxLength={2000} required /></label>
+              <button type="submit" disabled={busy}>Guardar cambios</button><button type="button" onClick={() => setEditingReview(null)}>Cancelar</button>
+            </form> : <div className="app-actions">
+              {review.status !== "APPROVED" && <button type="button" disabled={busy} onClick={() => setEditingReview(review.id)}>Editar</button>}
+              <button type="button" disabled={busy} onClick={() => void removeReview(review.id)}>Eliminar</button>
+            </div>}
+          </div>}
+        </article>;
+      })}
+    </section>}
+    {user.role === "ADMIN" && <ReviewModeration />}
   </main>;
 }

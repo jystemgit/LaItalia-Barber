@@ -57,8 +57,10 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     const secondUser = await sql`INSERT INTO users (email, password_hash) VALUES (${secondEmail}, ${password}) RETURNING id`;
     secondId = secondUser[0].id;
     await sql`INSERT INTO profiles (user_id, first_name, last_name, phone) VALUES (${secondId!}, 'Prueba', 'Dos', '12345678')`;
-    const services = await sql`SELECT id FROM services WHERE name = 'Corte'`;
+    const services = await sql`SELECT id FROM services WHERE name = 'Corte + barba'`;
     const serviceId = services[0].id as string;
+    const serviceDurations = await sql`SELECT name, duration_minutes FROM services ORDER BY name`;
+    assert.deepEqual(serviceDurations.map((row) => [row.name, Number(row.duration_minutes)]), [["Barba", 40], ["Corte", 60], ["Corte + barba", 90]]);
 
     assert.deepEqual((await availableSlots(sunday, serviceId)).slots, []);
     const sundayOpen = DateTime.fromISO(sunday, { zone: businessZone }).set({ hour: 10, minute: 30 });

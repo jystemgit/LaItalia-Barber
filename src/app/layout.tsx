@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { configuredSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
+const metadataBase = configuredSiteUrl() ?? new URL("http://localhost:3000");
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  metadataBase,
   title: {
     default: "L’Italia Barber | Barbería en Bahía Blanca",
     template: "%s | L’Italia Barber",
