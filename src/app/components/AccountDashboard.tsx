@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import AdminBookings from "@/app/components/AdminBookings";
+import AdminGoogleCalendar from "@/app/components/AdminGoogleCalendar";
 import ReviewModeration from "@/app/components/ReviewModeration";
 
 type User = { first_name: string; last_name: string; email: string; phone: string; role: "CUSTOMER" | "ADMIN" };
@@ -177,6 +178,7 @@ export default function AccountDashboard({ user }: { user: User }) {
         </article>;
       })}
     </section>}
+    {user.role === "ADMIN" && <AdminGoogleCalendar />}
     {user.role === "ADMIN" && <AdminBookings />}
     {user.role === "ADMIN" && <ReviewModeration />}
   </main>;

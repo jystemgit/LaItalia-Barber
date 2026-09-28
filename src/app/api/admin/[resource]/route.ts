@@ -29,7 +29,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/admin/[
       return Response.json({ totals: totals[0], upcoming });
     }
     if (resource === "bookings") return Response.json({ items: await db()`
-      SELECT b.id, b.starts_at, b.ends_at, b.status, s.name AS service_name,
+      SELECT b.id, b.starts_at, b.ends_at, b.status, b.calendar_sync_status, s.name AS service_name,
         s.duration_minutes, p.first_name, p.last_name, p.phone, u.email
       FROM bookings b
       JOIN services s ON s.id = b.service_id

@@ -1625,7 +1625,7 @@ h2 {
 .account-heading .eyebrow { margin-bottom: 10px; }
 .account-heading h1 { margin: 0; }
 .account-heading > p:last-child { margin: 8px 0 0; color: var(--ink-soft); font-size: 13px; }
-.app-top button, .app-row button, .admin-content button:not(.button), .admin-tabs button, .review-moderation button, .admin-bookings button {
+.app-top button, .app-row button, .admin-content button:not(.button), .admin-tabs button, .review-moderation button, .admin-bookings button, .admin-calendar button {
 	min-height: 38px;
 	padding: 7px 12px;
 	border: 1px solid var(--line);
@@ -1634,7 +1634,7 @@ h2 {
 	cursor: pointer;
 	font-size: 12px;
 }
-.app-top button:hover, .app-row button:hover, .admin-content button:not(.button):hover, .review-moderation button:hover, .admin-bookings button:hover { border-color: var(--blue-dark); }
+.app-top button:hover, .app-row button:hover, .admin-content button:not(.button):hover, .review-moderation button:hover, .admin-bookings button:hover, .admin-calendar button:hover { border-color: var(--blue-dark); }
 .auth-shell { display: grid; align-content: start; justify-items: center; gap: 38px; padding-top: 9vh; }
 .auth-shell .app-back { justify-self: center; }
 .auth-shell .app-panel { width: min(100%, 480px); }
@@ -1689,6 +1689,25 @@ h2 {
 .booking-status--no_show { background: #f5e3df; color: #843f35; }
 .admin-booking__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
 .admin-bookings button:disabled { cursor: wait; opacity: 0.55; }
+.admin-calendar { margin-top: 30px; padding: 28px; border: 1px solid var(--line); border-radius: 6px; background: #fffefa; }
+.admin-calendar__heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+.admin-calendar__heading h2 { margin: 0; }
+.calendar-connection-status { display: inline-flex; padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.calendar-connection-status.is-connected { background: #e0ece3; color: #375440; }
+.calendar-connection-status.is-disconnected { background: #eceae5; color: #52524d; }
+.admin-calendar__disconnected p { margin: 0 0 16px; color: var(--ink-soft); font-size: 13px; }
+.admin-calendar__connected { display: grid; justify-items: start; gap: 12px; }
+.admin-calendar__connected > label { font-size: 12px; font-weight: 600; }
+.admin-calendar__controls { display: flex; width: min(100%, 620px); flex-wrap: wrap; align-items: center; gap: 9px; }
+.admin-calendar__controls select { min-width: min(100%, 260px); min-height: 40px; flex: 1 1 260px; padding: 8px 10px; border: 1px solid #c4c8c1; border-radius: 4px; background: white; color: var(--ink); font-size: 14px; }
+.admin-calendar__selected { margin: 0; color: var(--ink-soft); font-size: 12px; overflow-wrap: anywhere; }
+.admin-calendar__disconnect { margin-top: 4px; }
+.admin-calendar button:disabled { cursor: wait; opacity: 0.55; }
+.admin-booking__sync { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.calendar-sync-status { color: var(--ink-soft); font-size: 12px; }
+.calendar-sync-status.is-synced { color: #375440; }
+.calendar-sync-status.is-failed { color: #843f35; font-weight: 600; }
+.admin-booking__sync button { min-height: 32px; padding: 5px 9px; font-size: 11px; }
 .account-reviews { margin-top: 22px; }
 .account-review-entry { display: grid; gap: 3px; }
 .account-review-entry p { margin: 2px 0; }
@@ -1729,6 +1748,7 @@ h2 {
 	.account-top__actions { flex-wrap: wrap; }
 	.account-heading { margin: 28px 0 22px; }
 	.admin-bookings { padding: 20px; }
+	.admin-calendar { padding: 20px; }
 	.admin-booking__main { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
 	.admin-booking__customer { grid-column: 1 / -1; }
 	.admin-booking__service { grid-column: 1; }
