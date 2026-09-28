@@ -1625,7 +1625,7 @@ h2 {
 .account-heading .eyebrow { margin-bottom: 10px; }
 .account-heading h1 { margin: 0; }
 .account-heading > p:last-child { margin: 8px 0 0; color: var(--ink-soft); font-size: 13px; }
-.app-top button, .app-row button, .admin-content button:not(.button), .admin-tabs button, .review-moderation button {
+.app-top button, .app-row button, .admin-content button:not(.button), .admin-tabs button, .review-moderation button, .admin-bookings button {
 	min-height: 38px;
 	padding: 7px 12px;
 	border: 1px solid var(--line);
@@ -1634,7 +1634,7 @@ h2 {
 	cursor: pointer;
 	font-size: 12px;
 }
-.app-top button:hover, .app-row button:hover, .admin-content button:not(.button):hover, .review-moderation button:hover { border-color: var(--blue-dark); }
+.app-top button:hover, .app-row button:hover, .admin-content button:not(.button):hover, .review-moderation button:hover, .admin-bookings button:hover { border-color: var(--blue-dark); }
 .auth-shell { display: grid; align-content: start; justify-items: center; gap: 38px; padding-top: 9vh; }
 .auth-shell .app-back { justify-self: center; }
 .auth-shell .app-panel { width: min(100%, 480px); }
@@ -1670,6 +1670,25 @@ h2 {
 .admin-metrics strong { font-family: var(--serif); font-size: 34px; line-height: 1; }
 .admin-metrics span { font-size: 12px; }
 .app-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.admin-bookings { margin-top: 34px; padding: 28px; border: 1px solid var(--line); border-radius: 6px; background: #fffefa; }
+.admin-bookings__heading h2 { margin-bottom: 18px; }
+.admin-bookings__filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.admin-bookings__filters button.is-active { border-color: var(--bronze); background: #354138; color: white; }
+.admin-bookings__empty { color: var(--ink-soft); }
+.admin-booking { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.admin-booking:last-child { border-bottom: 0; }
+.admin-booking__main { display: grid; grid-template-columns: minmax(130px, 0.8fr) minmax(190px, 1.3fr) minmax(120px, 0.8fr) auto; align-items: center; gap: 14px; }
+.admin-booking__date, .admin-booking__customer, .admin-booking__service { display: grid; gap: 3px; min-width: 0; }
+.admin-booking__date span, .admin-booking__customer a, .admin-booking__service span { color: var(--ink-soft); font-size: 12px; overflow-wrap: anywhere; }
+.admin-booking__customer a:hover { color: var(--blue-dark); text-decoration: underline; }
+.booking-status { display: inline-flex; width: fit-content; align-items: center; padding: 4px 9px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.booking-status--pending { background: #f2e8cd; color: #75551d; }
+.booking-status--confirmed { background: #e2ecef; color: #354b54; }
+.booking-status--completed { background: #e0ece3; color: #375440; }
+.booking-status--cancelled { background: #eceae5; color: #52524d; }
+.booking-status--no_show { background: #f5e3df; color: #843f35; }
+.admin-booking__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.admin-bookings button:disabled { cursor: wait; opacity: 0.55; }
 .account-reviews { margin-top: 22px; }
 .account-review-entry { display: grid; gap: 3px; }
 .account-review-entry p { margin: 2px 0; }
@@ -1709,6 +1728,11 @@ h2 {
 	.account-top { align-items: flex-start; flex-wrap: wrap; }
 	.account-top__actions { flex-wrap: wrap; }
 	.account-heading { margin: 28px 0 22px; }
+	.admin-bookings { padding: 20px; }
+	.admin-booking__main { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+	.admin-booking__customer { grid-column: 1 / -1; }
+	.admin-booking__service { grid-column: 1; }
+	.admin-booking__main > .booking-status { grid-column: 2; grid-row: 3; }
 	.review-moderation { padding: 20px; }
 	.public-reviews { padding-top: 74px; padding-bottom: 74px; }
 	.public-reviews .section-heading { align-items: start; }

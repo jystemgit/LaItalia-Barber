@@ -28,7 +28,18 @@ export async function GET(_request: Request, context: RouteContext<"/api/admin/[
       );
       return Response.json({ totals: totals[0], upcoming });
     }
-    if (resource === "bookings") return Response.json({ items: await db()`SELECT b.id, b.starts_at, b.ends_at, b.status, b.calendar_sync_status, s.name AS service_name, p.first_name, p.last_name, p.phone, u.email FROM bookings b JOIN services s ON s.id = b.service_id JOIN profiles p ON p.user_id = b.customer_id JOIN users u ON u.id = b.customer_id ORDER BY b.starts_at DESC LIMIT 200` });
+    if (resource === "bookings") return Response.json({ items: await db()`
+      SELECT b.id, b.starts_at, b.ends_at, b.status, s.name AS service_name,
+        s.duration_minutes, p.first_name, p.last_name, p.phone, u.email
+      FROM bookings b
+      JOIN services s ON s.id = b.service_id
+      JOIN profiles p ON p.user_id = b.customer_id
+      JOIN users u ON u.id = b.customer_id
+      ORDER BY (b.starts_at >= now()) DESC,
+        CASE WHEN b.starts_at >= now() THEN b.starts_at END ASC,
+        CASE WHEN b.starts_at < now() THEN b.starts_at END DESC
+      LIMIT 200
+    ` });
     if (resource === "customers") return Response.json({ items: await db()`SELECT u.id, u.email, p.first_name, p.last_name, p.phone, u.created_at, count(b.id)::int AS bookings FROM users u JOIN profiles p ON p.user_id = u.id LEFT JOIN bookings b ON b.customer_id = u.id WHERE u.role = 'CUSTOMER' GROUP BY u.id, p.user_id ORDER BY u.created_at DESC LIMIT 200` });
     if (resource === "services") return Response.json({ items: await db()`SELECT id, name, description, duration_minutes, active FROM services ORDER BY name` });
     if (resource === "hours") return Response.json({ items: await db()`SELECT weekday, opens_at::text, closes_at::text, slot_minutes FROM business_hours ORDER BY weekday` });
