@@ -61,6 +61,19 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     const serviceId = services[0].id as string;
     const serviceDurations = await sql`SELECT name, duration_minutes FROM services ORDER BY name`;
     assert.deepEqual(serviceDurations.map((row) => [row.name, Number(row.duration_minutes)]), [["Barba", 40], ["Corte", 60], ["Corte + barba", 90]]);
+    const expectedWeeklyStarts = [
+      ["12:30", "14:30", "16:00", "17:30"],
+      ["10:30", "12:30", "14:30", "16:00"],
+      ["12:30", "14:30", "16:00", "17:30"],
+      ["10:30", "12:30", "14:30", "16:00"],
+      ["12:30", "14:30", "16:00", "17:30"],
+      ["10:30", "12:30", "14:30", "16:00"],
+    ];
+    for (const [offset, expectedStarts] of expectedWeeklyStarts.entries()) {
+      const date = DateTime.fromISO(monday, { zone: businessZone }).plus({ days: offset }).toISODate()!;
+      assert.deepEqual((await availableSlots(date, serviceId)).slots.map((slot) => slot.time), expectedStarts);
+    }
+    assert.deepEqual((await availableSlots(sunday, serviceId)).slots, [], "domingo permanece cerrado");
 
     const cancellationBase = DateTime.now().plus({ days: 35 });
     async function addBooking(customerId: string, status: string, startsAt: DateTime) {
@@ -96,21 +109,24 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     const special = await sql`INSERT INTO business_exceptions (starts_at, ends_at, kind, note) VALUES (${sundayOpen.toJSDate()}, ${sundayOpen.plus({ minutes: 90 }).toJSDate()}, 'SPECIAL', 'prueba temporal') RETURNING id`;
     assert.deepEqual((await availableSlots(sunday, serviceId)).slots.map((slot) => slot.time), ["10:30"]);
     await sql`DELETE FROM business_exceptions WHERE id = ${special[0].id}`;
-    assert.deepEqual((await availableSlots(monday, serviceId)).slots.map((item) => item.time), ["10:30", "12:00", "13:30", "15:00"]);
+    assert.deepEqual((await availableSlots(monday, serviceId)).slots.map((item) => item.time), expectedWeeklyStarts[0]);
+    assert.equal(await createBooking(firstId!, monday, "13:00", serviceId), null, "no se permiten inicios fuera de la lista semanal");
     await sql`UPDATE services SET duration_minutes = 120 WHERE id = ${serviceId}`;
-    assert.deepEqual((await availableSlots(monday, serviceId)).slots.map((slot) => slot.time), ["10:30", "12:30", "14:30"]);
+    const longerSlots = await availableSlots(monday, serviceId);
+    assert.deepEqual(longerSlots.slots.map((slot) => slot.time), ["12:30", "14:30", "17:30"]);
+    assert.ok(longerSlots.slots.every((slot) => slot.endsAt.getTime() - slot.startsAt.getTime() === 120 * 60 * 1000));
     await sql`UPDATE services SET duration_minutes = 90 WHERE id = ${serviceId}`;
 
     const results = await Promise.allSettled([
-      createBooking(firstId!, monday, "12:00", serviceId),
-      createBooking(secondId!, monday, "12:00", serviceId),
+      createBooking(firstId!, monday, "14:30", serviceId),
+      createBooking(secondId!, monday, "14:30", serviceId),
     ]);
     const accepted = results.filter((result) => result.status === "fulfilled" && result.value !== null);
     assert.equal(accepted.length, 1, "solo una reserva del mismo slot puede confirmarse");
-    assert.deepEqual((await availableSlots(monday, serviceId)).slots.map((item) => item.time), ["10:30", "13:30", "15:00"]);
-    assert.ok(await createBooking(secondId!, monday, "13:30", serviceId));
+    assert.deepEqual((await availableSlots(monday, serviceId)).slots.map((item) => item.time), ["12:30", "16:00", "17:30"]);
+    assert.ok(await createBooking(secondId!, monday, "16:00", serviceId));
     await sql`UPDATE bookings SET status = 'CANCELLED' WHERE customer_id IN (${firstId!}, ${secondId!})`;
-    assert.ok((await availableSlots(monday, serviceId)).slots.some((item) => item.time === "12:00"));
+    assert.ok((await availableSlots(monday, serviceId)).slots.some((item) => item.time === "14:30"));
 
     await sql`INSERT INTO google_calendar_connections (id, owner_id, refresh_token_encrypted) VALUES (1, ${firstId!}, ${encrypt("refresh-token-test")})`;
     const eventBodies: Record<string, unknown>[] = [];

@@ -4,7 +4,7 @@ import { getAvailableSlots, overlaps, toMinutes, toTime } from "./availability";
 
 const hours = [{ start: toMinutes("10:30"), end: toMinutes("16:30"), slotMinutes: 90 }];
 
-test("cuatro turnos iniciales de lunes a sábado", () => {
+test("genera inicios regulares dentro de una ventana comercial", () => {
   assert.deepEqual(getAvailableSlots(hours, 90, []).map((slot) => toTime(slot.start)), ["10:30", "12:00", "13:30", "15:00"]);
 });
 

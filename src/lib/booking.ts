@@ -25,19 +25,31 @@ export async function availableSlots(date: string, serviceId: string, query: Que
   if (!service) throw new Error("Servicio no disponible");
   if (day.endOf("day") < DateTime.now().setZone(businessZone)) return { service, slots: [] };
   const nextDay = day.plus({ days: 1 });
-  const hours = await query`SELECT opens_at::text, closes_at::text, slot_minutes FROM business_hours WHERE weekday = ${day.weekday % 7}`;
+  const hours = await query`
+    SELECT opens_at::text, closes_at::text, slot_minutes,
+      ARRAY(
+        SELECT to_char(item.start_time, 'HH24:MI')
+        FROM unnest(start_times) AS item(start_time)
+        ORDER BY item.start_time
+      ) AS start_times
+    FROM business_hours WHERE weekday = ${day.weekday % 7}
+  `;
   const exceptions = await query`
     SELECT starts_at, ends_at, kind FROM business_exceptions
     WHERE starts_at < ${nextDay.toJSDate()} AND ends_at > ${day.toJSDate()}
   `;
   const special = exceptions.filter((item) => item.kind === "SPECIAL");
-  if (!hours.length || (!hours[0].opens_at && !special.length)) return { service, slots: [] };
-  const windows = (special.length ? special : [{ starts_at: day.set({ hour: Number(hours[0].opens_at.slice(0, 2)), minute: Number(hours[0].opens_at.slice(3, 5)) }).toJSDate(), ends_at: day.set({ hour: Number(hours[0].closes_at.slice(0, 2)), minute: Number(hours[0].closes_at.slice(3, 5)) }).toJSDate() }])
-    .map((item) => ({
+  if (!hours.length || (!hours[0].start_times.length && !special.length)) return { service, slots: [] };
+  const windows = special.length
+    ? special.map((item) => ({
       start: Math.max(0, Math.floor(DateTime.fromJSDate(item.starts_at).setZone(businessZone).diff(day, "minutes").minutes)),
       end: Math.min(1440, Math.floor(DateTime.fromJSDate(item.ends_at).setZone(businessZone).diff(day, "minutes").minutes)),
       slotMinutes: Number(hours[0].slot_minutes),
-    }));
+    }))
+    : (hours[0].start_times as string[]).map((time) => {
+      const start = toMinutes(time);
+      return { start, end: start + service.duration_minutes, slotMinutes: service.duration_minutes };
+    });
   const booked = await query`
     SELECT starts_at, ends_at FROM bookings
     WHERE starts_at < ${nextDay.toJSDate()} AND ends_at > ${day.toJSDate()}
@@ -82,7 +94,10 @@ export async function createBooking(customerId: string, date: string, time: stri
   if (!booked) return null;
   await syncBooking(booked.id);
   const user = await db()`SELECT email FROM users WHERE id = ${customerId}`;
-  await notifyBooking(user[0]?.email, "Reserva confirmada - L’Italia Barber", `Tu turno de ${booked.service_name} está confirmado para el ${date} a las ${time} en L’Italia Barber`).catch((error) => console.error("Booking email error", { bookingId: booked.id, error }));
+  const subject = "Reserva confirmada - L’Italia Barber";
+  const text = `Tu turno de ${booked.service_name} está confirmado para el ${date} a las ${time} en L’Italia Barber`;
+  await notifyBooking(user[0]?.email, subject, text).catch((error) => console.error("Booking email error", { bookingId: booked.id, error }));
+  await notifyBookingAdmins(subject, text).catch((error) => console.error("Admin booking email error", { bookingId: booked.id, error }));
   return booked.id;
 }
 
@@ -100,6 +115,16 @@ export async function cancelCustomerBooking(customerId: string, bookingId: strin
 export async function notifyBooking(email: string | undefined, subject: string, text: string) {
   if (!email || !process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return;
   await sendEmail(email, subject, text);
+}
+
+export function bookingAdminNotificationRecipients(currentAdminEmail = process.env.ADMIN_EMAIL) {
+  return [...new Set([currentAdminEmail, "piersantialexis@gmail.com"]
+    .filter((email): email is string => Boolean(email?.trim()))
+    .map((email) => email.trim().toLowerCase()))];
+}
+
+export async function notifyBookingAdmins(subject: string, text: string) {
+  await Promise.all(bookingAdminNotificationRecipients().map((email) => notifyBooking(email, subject, text)));
 }
 
 export async function syncBooking(id: string) {

@@ -94,7 +94,7 @@ export default function BookingFlow() {
           <h3>Tu turno está confirmado</h3>
           <p>{service?.name} · {date} · {time}</p>
           <p>{message}</p>
-          <a className="button button--light" href="/mi-cuenta">Ver mi cuenta</a>
+          <a className="button button--reserve" href="/mi-cuenta">Ver Mi Cuenta</a>
         </div>
       ) : (
         <div className="booking-step">

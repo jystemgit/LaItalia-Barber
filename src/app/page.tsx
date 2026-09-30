@@ -111,6 +111,26 @@ export default function Home() {
         </section>
 
         <section className="philosophy section-pad" id="experiencia" aria-labelledby="philosophy-title">
+          <div className="experience-intro">
+            <div className="experience-intro__heading">
+              <h2>Nuestra<br /><em>Experiencia</em></h2>
+              <Image
+                className="experience-intro__logo"
+                src="/images/logobarber.png"
+                alt="Logo L’Italia Barber"
+                width={500}
+                height={494}
+                sizes="(max-width: 760px) 38vw, 32vw"
+              />
+            </div>
+            <div className="experience-intro__copy">
+              <p>Abrimos en 2012, cuando en Bahía Blanca casi no había barberías. Fuimos de las primeras.</p>
+              <p>13 años después, seguimos capacitándonos hasta el día de hoy para traer lo último en corte, barba y estilo.</p>
+              <p>No es solo un corte de pelo. Es la experiencia de entrar a un lugar donde te conocen, donde hay charla, confianza y el tiempo para hacer las cosas bien.</p>
+              <p>13 años, miles de cortes y clientes que nos eligen desde el primer día. Eso no se improvisa.</p>
+            </div>
+            <p className="experience-intro__signature">L&apos;ITALIA BARBER - Pioneros en Bahía desde 2012.</p>
+          </div>
           <div className="philosophy__image-wrap">
             <Image
               src="/images/img5.jpeg"

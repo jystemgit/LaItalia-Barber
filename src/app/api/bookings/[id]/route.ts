@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { currentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { cancelCustomerBooking, notifyBooking, syncBooking } from "@/lib/booking";
+import { cancelCustomerBooking, notifyBooking, notifyBookingAdmins, syncBooking } from "@/lib/booking";
 import { errorResponse, sameOrigin } from "@/lib/security";
 
 export const runtime = "nodejs";
@@ -23,7 +23,10 @@ export async function PATCH(request: Request, context: RouteContext<"/api/bookin
     if (!cancelled) return errorResponse("Reserva no encontrada o no cancelable", 404);
     await db()`INSERT INTO booking_events (booking_id, actor_id, event) VALUES (${id}, ${user.id}, 'CANCELLED')`;
     await syncBooking(id);
-    await notifyBooking(user.email, "Reserva cancelada - L’Italia Barber", "Tu reserva fue cancelada. Podés consultar nuevos horarios en el sitio").catch((error) => console.error("Cancellation email error", { bookingId: id, error }));
+    const subject = "Reserva cancelada - L’Italia Barber";
+    const text = "Tu reserva fue cancelada. Podés consultar nuevos horarios en el sitio";
+    await notifyBooking(user.email, subject, text).catch((error) => console.error("Cancellation email error", { bookingId: id, error }));
+    await notifyBookingAdmins(subject, text).catch((error) => console.error("Admin cancellation email error", { bookingId: id, error }));
     return Response.json({ message: "Reserva cancelada" });
   } catch (error) {
     if (error instanceof z.ZodError) return errorResponse("ID inválido", 400);
