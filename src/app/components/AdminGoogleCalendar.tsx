@@ -29,6 +29,7 @@ export default function AdminGoogleCalendar() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [connectionFailed, setConnectionFailed] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -48,10 +49,21 @@ export default function AdminGoogleCalendar() {
       .then((data) => {
         if (active) {
           setConnection(data);
+          setConnectionFailed(false);
           setSelectedCalendar(data.connection || "");
         }
       })
-      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "No se pudo consultar Google Calendar"); })
+      .catch((reason) => {
+        if (active) {
+          setConnectionFailed(true);
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "No se pudo consultar Google Calendar"
+          );
+        }
+      })
+
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
@@ -124,6 +136,14 @@ export default function AdminGoogleCalendar() {
     {error && <p className="app-message" role="alert">{error}</p>}
     {notice && <p className="app-message" role="status">{notice}</p>}
     {loading && <p role="status">Consultando conexión...</p>}
+    {!loading && connectionFailed && (
+  <div className="admin-calendar__disconnected">
+    <p>No se pudo consultar el calendario. Reconectá Google para restablecer la integración.</p>
+    <button type="button" disabled={busy} onClick={() => void connect()}>
+      {busy ? "Conectando..." : "Reconectar Google Calendar"}
+    </button>
+  </div>
+)}
     {!loading && connection && !connection.connected && <div className="admin-calendar__disconnected">
       <p>Conecta el calendario del negocio para sincronizar reservas confirmadas.</p>
       <button type="button" disabled={busy} onClick={() => void connect()}>{busy ? "Conectando..." : "Conectar Google Calendar"}</button>
