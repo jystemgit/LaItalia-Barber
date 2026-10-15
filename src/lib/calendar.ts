@@ -59,7 +59,22 @@ async function accessToken(refreshTokenEncrypted: string) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: decrypt(refreshTokenEncrypted), grant_type: "refresh_token" }),
   });
-  if (!response.ok) throw new Error(`Google token: ${response.status}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as {
+      error?: unknown;
+      error_description?: unknown;
+    } | null;
+    const safeField = (value: unknown, maxLength: number) => {
+      if (typeof value !== "string") return undefined;
+      return value.replace(/[\r\n]/g, " ").slice(0, maxLength);
+    };
+    console.error("Google token request failed", {
+      status: response.status,
+      error: safeField(body?.error, 200),
+      error_description: safeField(body?.error_description, 500),
+    });
+    throw new Error(`Google token: ${response.status}`);
+  }
   const data = await response.json() as { access_token: string };
   return data.access_token;
 }
