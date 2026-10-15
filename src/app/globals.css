@@ -1730,6 +1730,12 @@ h2 {
 	color: var(--ink);
 	font-size: 14px;
 }
+.password-field { position: relative; display: flex; align-items: center; }
+.password-field input { padding-right: 48px; }
+.password-visibility-toggle { position: absolute; right: 6px; display: inline-grid; width: 36px; height: 36px; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ink-soft); cursor: pointer; }
+.password-visibility-toggle:hover { color: var(--ink); }
+.password-visibility-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.password-visibility-toggle svg { width: 20px; height: 20px; }
 .app-form textarea { min-height: 88px; resize: vertical; }
 .app-form input[type="checkbox"] { width: 18px; min-height: 18px; }
 .app-form .button { justify-self: start; }

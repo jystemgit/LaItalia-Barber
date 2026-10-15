@@ -2,13 +2,38 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { createPasswordFieldState, passwordInputType, togglePasswordVisibility } from "@/lib/password-visibility";
 
 type Mode = "register" | "login" | "forgot" | "reset" | "verify";
+
+function PasswordVisibilityToggle({ visible, label, onToggle }: { visible: boolean; label: string; onToggle: () => void }) {
+  return <button
+    className="password-visibility-toggle"
+    type="button"
+    aria-label={`${visible ? "Ocultar" : "Mostrar"} ${label}`}
+    aria-pressed={visible}
+    onClick={onToggle}
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {visible ? <>
+        <path d="M3 3l18 18" />
+        <path d="M10.6 10.6a2 2 0 002.8 2.8" />
+        <path d="M9.9 5.2A10.8 10.8 0 0112 5c5.5 0 9 7 9 7a15.8 15.8 0 01-3.1 3.8" />
+        <path d="M6.2 6.2C4.1 7.6 3 12 3 12s3.5 7 9 7a9.8 9.8 0 004.1-.9" />
+      </> : <>
+        <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5-9.5-6.5-9.5-6.5Z" />
+        <circle cx="12" cy="12" r="2.5" />
+      </>}
+    </svg>
+  </button>;
+}
 
 export default function AuthScreen({ mode, token, next }: { mode: Mode; token?: string; next?: string }) {
   const [message, setMessage] = useState(mode === "verify" && !token ? "Enlace de verificación inválido" : mode === "reset" && !token ? "Enlace de recuperación inválido" : "");
   const [loading, setLoading] = useState(false);
   const [resendEmail, setResendEmail] = useState("");
+  const [passwordField, setPasswordField] = useState(createPasswordFieldState);
+  const [confirmPasswordField, setConfirmPasswordField] = useState(createPasswordFieldState);
   const verifiedToken = useRef<string | null>(null);
 
   useEffect(() => {
@@ -70,8 +95,14 @@ export default function AuthScreen({ mode, token, next }: { mode: Mode; token?: 
             <label>Teléfono<input name="phone" type="tel" autoComplete="tel" required minLength={7} /></label>
           </>}
           {mode !== "reset" && <label>Email<input name="email" type="email" autoComplete="email" required /></label>}
-          {(mode === "register" || mode === "login" || mode === "reset") && <label>Contraseña<input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? 1 : 12} required /></label>}
-          {(mode === "register" || mode === "reset") && <label>Confirmar contraseña<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></label>}
+          {mode === "register" ? <label>Contraseña<div className="password-field">
+            <input name="password" type={passwordInputType(passwordField.visible)} autoComplete="new-password" value={passwordField.value} onChange={(event) => setPasswordField((current) => ({ ...current, value: event.target.value }))} minLength={12} required />
+            <PasswordVisibilityToggle visible={passwordField.visible} label="contraseña" onToggle={() => setPasswordField((current) => togglePasswordVisibility(current))} />
+          </div></label> : (mode === "login" || mode === "reset") && <label>Contraseña<input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? 1 : 12} required /></label>}
+          {mode === "register" ? <label>Confirmar contraseña<div className="password-field">
+            <input name="confirmPassword" type={passwordInputType(confirmPasswordField.visible)} autoComplete="new-password" value={confirmPasswordField.value} onChange={(event) => setConfirmPasswordField((current) => ({ ...current, value: event.target.value }))} minLength={12} required />
+            <PasswordVisibilityToggle visible={confirmPasswordField.visible} label="confirmación de contraseña" onToggle={() => setConfirmPasswordField((current) => togglePasswordVisibility(current))} />
+          </div></label> : mode === "reset" && <label>Confirmar contraseña<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></label>}
           <button className="button button--reserve" type="submit" disabled={loading}>{loading ? "Procesando..." : mode === "forgot" ? "Enviar enlace" : mode === "reset" ? "Cambiar contraseña" : mode === "register" ? "Crear cuenta" : "Iniciar sesión"}</button>
         </form>}
         {message && <p className="app-message" role="status">{message}</p>}
