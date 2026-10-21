@@ -64,7 +64,7 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     const expectedWeeklyStarts = [
       ["12:30", "14:30", "16:00", "17:30"],
       ["10:30", "12:30", "14:30", "16:00"],
-      ["12:30", "14:30", "16:00", "17:30"],
+      ["12:30", "14:30", "16:00"],
       ["10:30", "12:30", "14:30", "16:00"],
       ["12:30", "14:30", "16:00", "17:30"],
       ["10:30", "12:30", "14:30", "16:00"],
@@ -73,6 +73,8 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
       const date = DateTime.fromISO(monday, { zone: businessZone }).plus({ days: offset }).toISODate()!;
       assert.deepEqual((await availableSlots(date, serviceId)).slots.map((slot) => slot.time), expectedStarts);
     }
+    const wednesday = DateTime.fromISO(monday, { zone: businessZone }).plus({ days: 2 }).toISODate()!;
+    assert.equal(await createBooking(firstId!, wednesday, "17:30", serviceId), null, "miércoles a las 17:30 no permite reservar directamente");
     assert.deepEqual((await availableSlots(sunday, serviceId)).slots, [], "domingo permanece cerrado");
 
     const cancellationBase = DateTime.now().plus({ days: 35 });
