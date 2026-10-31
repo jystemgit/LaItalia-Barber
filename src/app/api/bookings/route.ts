@@ -29,9 +29,14 @@ export async function POST(request: Request) {
     if (!user || user.role !== "CUSTOMER") return errorResponse("Iniciá sesión como cliente", 401);
     if (!(await rateLimit(`booking:${user.id}`, 10, 60))) return errorResponse("Demasiados intentos", 429);
     const { serviceId, date, time } = z.object({ serviceId: z.uuid(), date: z.string(), time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }).parse(await request.json());
-    const id = await createBooking(user.id, date, time, serviceId);
-    if (!id) return errorResponse("El horario ya no está disponible. Elegí otro", 409);
-    return Response.json({ id, message: "Reserva confirmada" }, { status: 201 });
+    const result = await createBooking(user.id, date, time, serviceId);
+    if (result === null) return errorResponse("El horario ya no está disponible. Elegí otro", 409);
+    if (typeof result !== "string") {
+      if (result.reason === "ACTIVE_BOOKING") return errorResponse("Ya tenés una reserva activa. Podés reservar otro turno cuando finalice o canceles el actual.", 409);
+      const until = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "long" }).format(result.until);
+      return errorResponse(`Tu cuenta está temporalmente suspendida por inasistencias. Vas a poder reservar nuevamente el ${until}.`, 403);
+    }
+    return Response.json({ id: result, message: "Reserva confirmada" }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError || error instanceof SyntaxError || (error instanceof Error && /Fecha inválida|Servicio no disponible/.test(error.message))) return errorResponse("Datos inválidos", 400);
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23P01") return errorResponse("El horario ya fue reservado", 409);

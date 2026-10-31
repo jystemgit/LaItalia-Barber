@@ -6,6 +6,7 @@ import { getAvailableSlots, toMinutes, toTime, type Interval } from "./availabil
 import { sendEmail } from "./email";
 
 type Query = postgres.Sql | postgres.TransactionSql;
+type BookingStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
 
 export function localDay(date: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Fecha inválida");
@@ -76,13 +77,31 @@ export async function createBooking(customerId: string, date: string, time: stri
   const day = localDay(date);
   const slotStart = day.plus({ minutes: startMinutes }).toJSDate();
   const initial = await availableSlots(date, serviceId);
-  if (!initial.slots.some((slot) => slot.time === time && slot.startsAt.getTime() === slotStart.getTime())) return null;
+  const initiallyAvailable = initial.slots.some((slot) => slot.time === time && slot.startsAt.getTime() === slotStart.getTime());
   const connection = await connectedCalendar();
   const booked = await db().begin(async (transaction) => {
+    await transaction`SELECT pg_advisory_xact_lock(0, hashtext(${customerId}))`;
     await transaction`SELECT pg_advisory_xact_lock(hashtext(${date}))`;
+    const restrictions = await transaction`
+      SELECT
+        EXISTS (
+          SELECT 1 FROM bookings
+          WHERE customer_id = ${customerId}
+            AND status IN ('PENDING','CONFIRMED')
+            AND ends_at > NOW()
+        ) AS has_active_booking,
+        (
+          SELECT MAX(suspended_until) FROM customer_suspensions
+          WHERE customer_id = ${customerId} AND suspended_until > NOW()
+        ) AS suspended_until
+    `;
+    if (restrictions[0].suspended_until) {
+      return { reason: "SUSPENDED", until: restrictions[0].suspended_until as Date } as const;
+    }
+    if (restrictions[0].has_active_booking) return { reason: "ACTIVE_BOOKING" } as const;
     const current = await availableSlots(date, serviceId, transaction, false);
     const slot = current.slots.find((item) => item.time === time);
-    if (!slot || slot.startsAt.getTime() !== slotStart.getTime()) return null;
+    if (!initiallyAvailable || !slot || slot.startsAt.getTime() !== slotStart.getTime()) return null;
     const rows = await transaction`
       INSERT INTO bookings (customer_id, service_id, starts_at, ends_at, status, calendar_sync_status)
       VALUES (${customerId}, ${serviceId}, ${slot.startsAt}, ${slot.endsAt}, 'CONFIRMED', ${connection ? "PENDING" : "DISCONNECTED"})
@@ -91,6 +110,7 @@ export async function createBooking(customerId: string, date: string, time: stri
     await transaction`INSERT INTO booking_events (booking_id, actor_id, event) VALUES (${rows[0].id}, ${customerId}, 'CREATED')`;
     return { ...rows[0], service_name: current.service.name } as { id: string; starts_at: Date; ends_at: Date; service_name: string };
   });
+  if (booked && "reason" in booked) return booked;
   if (!booked) return null;
   await syncBooking(booked.id);
   const user = await db()`SELECT email FROM users WHERE id = ${customerId}`;
@@ -99,6 +119,46 @@ export async function createBooking(customerId: string, date: string, time: stri
   await notifyBooking(user[0]?.email, subject, text).catch((error) => console.error("Booking email error", { bookingId: booked.id, error }));
   await notifyBookingAdmins(subject, text).catch((error) => console.error("Admin booking email error", { bookingId: booked.id, error }));
   return booked.id;
+}
+
+export async function updateBookingStatus(id: string, status: BookingStatus, actorId: string) {
+  return db().begin(async (transaction) => {
+    const booking = await transaction`SELECT customer_id FROM bookings WHERE id = ${id}`;
+    if (!booking.length) return false;
+    const customerId = booking[0].customer_id as string;
+    await transaction`SELECT pg_advisory_xact_lock(0, hashtext(${customerId}))`;
+    const lockedBooking = await transaction`SELECT customer_id, ends_at <= NOW() AS ended FROM bookings WHERE id = ${id} FOR UPDATE`;
+    if (!lockedBooking.length || lockedBooking[0].customer_id !== customerId) return false;
+    if (status === "NO_SHOW" && !lockedBooking[0].ended) return false;
+    const rows = await transaction`
+      UPDATE bookings SET status = ${status}, updated_at = now(),
+        calendar_sync_status = CASE WHEN ${status} = 'CANCELLED' AND google_calendar_event_id IS NOT NULL THEN 'PENDING' ELSE calendar_sync_status END
+      WHERE id = ${id} AND status NOT IN ('CANCELLED','COMPLETED','NO_SHOW') AND status <> ${status}
+      RETURNING id
+    `;
+    if (!rows.length) return false;
+    await transaction`INSERT INTO booking_events (booking_id, actor_id, event) VALUES (${id}, ${actorId}, ${status})`;
+    if (status === "NO_SHOW") {
+      const recorded = await transaction`
+        INSERT INTO customer_no_shows (booking_id, customer_id, recorded_at)
+        VALUES (${id}, ${customerId}, now())
+        ON CONFLICT (booking_id) DO NOTHING
+        RETURNING booking_id, recorded_at
+      `;
+      if (recorded.length) {
+        const recordedAt = recorded[0].recorded_at as Date;
+        const counts = await transaction`SELECT count(*)::int AS no_show_count FROM customer_no_shows WHERE customer_id = ${customerId}`;
+        const noShowCount = Number(counts[0].no_show_count);
+        if (noShowCount % 5 === 0) {
+          await transaction`
+            INSERT INTO customer_suspensions (customer_id, no_show_count, starts_at, suspended_until)
+            VALUES (${customerId}, ${noShowCount}, ${recordedAt}, ${recordedAt} + interval '3 months')
+          `;
+        }
+      }
+    }
+    return true;
+  });
 }
 
 export async function cancelCustomerBooking(customerId: string, bookingId: string) {

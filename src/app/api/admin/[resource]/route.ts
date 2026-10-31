@@ -2,7 +2,7 @@ import { z } from "zod";
 import { currentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { connectedCalendar, googleCalendars } from "@/lib/calendar";
-import { syncBooking } from "@/lib/booking";
+import { syncBooking, updateBookingStatus } from "@/lib/booking";
 import { errorResponse, sameOrigin } from "@/lib/security";
 import { deleteReviewAsAdmin, moderateReview } from "@/lib/reviews";
 
@@ -40,7 +40,16 @@ export async function GET(_request: Request, context: RouteContext<"/api/admin/[
         CASE WHEN b.starts_at < now() THEN b.starts_at END DESC
       LIMIT 200
     ` });
-    if (resource === "customers") return Response.json({ items: await db()`SELECT u.id, u.email, p.first_name, p.last_name, p.phone, u.created_at, count(b.id)::int AS bookings FROM users u JOIN profiles p ON p.user_id = u.id LEFT JOIN bookings b ON b.customer_id = u.id WHERE u.role = 'CUSTOMER' GROUP BY u.id, p.user_id ORDER BY u.created_at DESC LIMIT 200` });
+    if (resource === "customers") return Response.json({ items: await db()`
+      SELECT u.id, u.email, p.first_name, p.last_name, p.phone, u.created_at,
+        (SELECT count(*)::int FROM bookings b WHERE b.customer_id = u.id) AS bookings,
+        (SELECT count(*)::int FROM customer_no_shows n WHERE n.customer_id = u.id) AS no_show_count,
+        (SELECT suspended_until FROM customer_suspensions s
+          WHERE s.customer_id = u.id AND s.suspended_until > NOW()
+          ORDER BY s.suspended_until DESC LIMIT 1) AS suspended_until
+      FROM users u JOIN profiles p ON p.user_id = u.id
+      WHERE u.role = 'CUSTOMER' ORDER BY u.created_at DESC LIMIT 200
+    ` });
     if (resource === "services") return Response.json({ items: await db()`SELECT id, name, description, duration_minutes, active FROM services ORDER BY name` });
     if (resource === "hours") return Response.json({ items: await db()`SELECT weekday, opens_at::text, closes_at::text, slot_minutes FROM business_hours ORDER BY weekday` });
     if (resource === "exceptions") return Response.json({ items: await db()`SELECT id, starts_at, ends_at, kind, note FROM business_exceptions ORDER BY starts_at DESC LIMIT 200` });
@@ -100,9 +109,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/admin/
     const input: unknown = await request.json();
     if (resource === "bookings") {
       const { id, status } = z.object({ id: z.uuid(), status: z.enum(["PENDING", "CONFIRMED", "COMPLETED", "CANCELLED", "NO_SHOW"]) }).parse(input);
-      const rows = await db()`UPDATE bookings SET status = ${status}, updated_at = now(), calendar_sync_status = CASE WHEN ${status} = 'CANCELLED' AND google_calendar_event_id IS NOT NULL THEN 'PENDING' ELSE calendar_sync_status END WHERE id = ${id} AND status NOT IN ('CANCELLED','COMPLETED','NO_SHOW') AND status <> ${status} RETURNING id`;
-      if (!rows.length) return errorResponse("Transición no permitida", 409);
-      await db()`INSERT INTO booking_events (booking_id, actor_id, event) VALUES (${id}, ${user.id}, ${status})`;
+      if (!(await updateBookingStatus(id, status, user.id))) return errorResponse("Transición no permitida", 409);
       if (status === "CANCELLED") await syncBooking(id);
       return Response.json({ message: "Estado actualizado" });
     }

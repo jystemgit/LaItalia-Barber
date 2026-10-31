@@ -101,7 +101,7 @@ export default function CustomerDashboard({ user }: { user: User }) {
         {!bookings.length && <p>Todavía no tenés reservas</p>}
         {bookings.map((booking) => <article className="app-row" key={booking.id}>
           <strong>{booking.service_name}</strong><span>{new Date(booking.starts_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "medium", timeStyle: "short" })}</span>
-          <span>{booking.status} · {booking.calendar_sync_status === "FAILED" ? "Sincronización con calendario pendiente" : ""}</span>
+          <span>{booking.status === "NO_SHOW" ? "No Vino" : booking.status} · {booking.calendar_sync_status === "FAILED" ? "Sincronización con calendario pendiente" : ""}</span>
           {(booking.status === "PENDING" || booking.status === "CONFIRMED") && new Date(booking.starts_at) > new Date() && <button type="button" onClick={() => cancel(booking.id)}>Cancelar</button>}
           {booking.status === "COMPLETED" && !reviews.some((review) => review.booking_id === booking.id) && <form className="app-form" onSubmit={(event) => addReview(event, booking.id)}>
             <label>Calificación<select name="rating" required>{[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating}</option>)}</select></label>

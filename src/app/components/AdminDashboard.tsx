@@ -61,6 +61,7 @@ export default function AdminDashboard() {
 
   const items = (data.items || []) as Item[];
   const text = (value: unknown) => value == null ? "—" : String(value);
+  const statusLabel = (value: unknown) => value === "NO_SHOW" ? "No Vino" : text(value);
   const localDate = (value: unknown) => value ? new Date(String(value)).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "medium", timeStyle: "short" }) : "—";
 
   return <main className="app-shell admin-shell">
@@ -80,8 +81,8 @@ export default function AdminDashboard() {
       {tab === "bookings" && <><h2>Reservas</h2>{items.map((item) => <article className="app-row" key={text(item.id)}>
         <strong>{localDate(item.starts_at)} · {text(item.service_name)}</strong>
         <span>{text(item.first_name)} {text(item.last_name)} · {text(item.email)} · {text(item.phone)}</span>
-        <span>{text(item.status)} · Calendar: {text(item.calendar_sync_status)}</span>
-        {(item.status === "CONFIRMED" || item.status === "PENDING") && <div className="app-actions">{["PENDING", "CONFIRMED", "COMPLETED", "CANCELLED", "NO_SHOW"].map((status) => <button type="button" key={status} onClick={() => void mutate("bookings", "PATCH", { id: item.id, status })}>{status}</button>)}</div>}
+        <span>{statusLabel(item.status)} · Calendar: {text(item.calendar_sync_status)}</span>
+        {(item.status === "CONFIRMED" || item.status === "PENDING") && <div className="app-actions">{["PENDING", "CONFIRMED", "COMPLETED", "CANCELLED", "NO_SHOW"].map((status) => <button type="button" key={status} onClick={() => void mutate("bookings", "PATCH", { id: item.id, status })}>{status === "NO_SHOW" ? "No Vino" : status}</button>)}</div>}
         {(item.calendar_sync_status === "FAILED" || item.calendar_sync_status === "DISCONNECTED" || item.calendar_sync_status === "PENDING") && item.status === "CONFIRMED" && <button type="button" onClick={() => void mutate("calendar-sync", "POST", { id: item.id })}>Sincronizar calendario</button>}
       </article>)}</>}
       {tab === "customers" && <><h2>Clientes</h2>{items.map((item) => <p className="app-row" key={text(item.id)}>{text(item.first_name)} {text(item.last_name)} · {text(item.email)} · {text(item.phone)} · Reservas: {text(item.bookings)}</p>)}</>}

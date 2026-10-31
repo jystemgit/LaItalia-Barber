@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import argon2 from "argon2";
 import { DateTime } from "luxon";
 import { db } from "./db";
-import { availableSlots, cancelCustomerBooking, createBooking, syncBooking } from "./booking";
+import { availableSlots, cancelCustomerBooking, createBooking, syncBooking, updateBookingStatus } from "./booking";
 import { businessZone, calendarEventId, createCalendarEvent, googleBusy } from "./calendar";
 import { verifyEmail, resetPassword, register } from "./auth";
 import { encrypt, hashToken, randomToken } from "./security";
@@ -13,6 +15,7 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
   const email = `integration-${randomToken().slice(0, 12)}@example.test`;
   const token = randomToken();
   const secondEmail = `integration-${randomToken().slice(0, 12)}@example.test`;
+  const thirdEmail = `integration-${randomToken().slice(0, 12)}@example.test`;
   const expiredEmail = `integration-${randomToken().slice(0, 12)}@example.test`;
   const password = await argon2.hash("contraseña-segura-para-test");
   process.env.AUTH_SECRET = "integration-test-secret-with-32-characters-minimum";
@@ -28,6 +31,7 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
   const sunday = DateTime.fromISO(monday, { zone: businessZone }).minus({ days: 1 }).toISODate()!;
   let firstId: string | undefined;
   let secondId: string | undefined;
+  let thirdId: string | undefined;
   try {
     await register({ email, password: "contraseña-segura-para-test", firstName: "Prueba", lastName: "Integración", phone: "12345678" }, "https://test.example");
     assert.equal((await sql`SELECT count(*)::int AS count FROM users WHERE email = ${email}`)[0].count, 0, "no existe cuenta activa antes de verificar");
@@ -57,6 +61,9 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     const secondUser = await sql`INSERT INTO users (email, password_hash) VALUES (${secondEmail}, ${password}) RETURNING id`;
     secondId = secondUser[0].id;
     await sql`INSERT INTO profiles (user_id, first_name, last_name, phone) VALUES (${secondId!}, 'Prueba', 'Dos', '12345678')`;
+    const thirdUser = await sql`INSERT INTO users (email, password_hash) VALUES (${thirdEmail}, ${password}) RETURNING id`;
+    thirdId = thirdUser[0].id;
+    await sql`INSERT INTO profiles (user_id, first_name, last_name, phone) VALUES (${thirdId!}, 'Prueba', 'Tres', '12345678')`;
     const services = await sql`SELECT id FROM services WHERE name = 'Corte + barba'`;
     const serviceId = services[0].id as string;
     const serviceDurations = await sql`SELECT name, duration_minutes FROM services ORDER BY name`;
@@ -96,6 +103,17 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     const foreignBookingId = await addBooking(secondId!, "CONFIRMED", cancellationBase.plus({ hours: 10 }));
     const pastBookingId = await addBooking(firstId!, "CONFIRMED", DateTime.now().minus({ hours: 3 }));
 
+    assert.equal(await updateBookingStatus(confirmedBookingId, "NO_SHOW", secondId!), false, "una reserva futura no puede marcarse como NO_SHOW");
+    const futureNoShowStatus = await sql`SELECT status FROM bookings WHERE id = ${confirmedBookingId}`;
+    assert.equal(futureNoShowStatus[0].status, "CONFIRMED");
+    const rejectedNoShowEffects = await sql`
+      SELECT
+        (SELECT count(*)::int FROM customer_no_shows WHERE booking_id = ${confirmedBookingId}) AS no_show_count,
+        (SELECT count(*)::int FROM booking_events WHERE booking_id = ${confirmedBookingId} AND event = 'NO_SHOW') AS event_count,
+        (SELECT count(*)::int FROM customer_suspensions WHERE customer_id = ${firstId!}) AS suspension_count
+    `;
+    assert.deepEqual([rejectedNoShowEffects[0].no_show_count, rejectedNoShowEffects[0].event_count, rejectedNoShowEffects[0].suspension_count], [0, 0, 0]);
+
     assert.ok(await cancelCustomerBooking(firstId!, pendingBookingId), "el cliente puede cancelar su reserva PENDING futura");
     assert.ok(await cancelCustomerBooking(firstId!, confirmedBookingId), "el cliente puede cancelar su reserva CONFIRMED futura");
     assert.equal(await cancelCustomerBooking(firstId!, completedBookingId), null, "no puede cancelar COMPLETED");
@@ -105,6 +123,12 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     assert.equal(await cancelCustomerBooking(firstId!, pastBookingId), null, "no puede cancelar una reserva pasada");
     const cancelledStates = await sql`SELECT status FROM bookings WHERE id IN (${pendingBookingId}, ${confirmedBookingId}) ORDER BY id`;
     assert.deepEqual(cancelledStates.map((booking) => booking.status), ["CANCELLED", "CANCELLED"]);
+    assert.equal(await updateBookingStatus(pastBookingId, "NO_SHOW", secondId!), true, "una reserva finalizada sí puede marcarse como NO_SHOW");
+    const pastNoShow = await sql`SELECT status, ends_at <= now() AS ended FROM bookings WHERE id = ${pastBookingId}`;
+    assert.equal(pastNoShow[0].status, "NO_SHOW");
+    assert.equal(pastNoShow[0].ended, true);
+    assert.equal((await sql`SELECT count(*)::int AS count FROM customer_no_shows WHERE booking_id = ${pastBookingId}`)[0].count, 1);
+    await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${foreignBookingId}`;
 
     assert.deepEqual((await availableSlots(sunday, serviceId)).slots, []);
     const sundayOpen = DateTime.fromISO(sunday, { zone: businessZone }).set({ hour: 10, minute: 30 });
@@ -119,6 +143,101 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     assert.ok(longerSlots.slots.every((slot) => slot.endsAt.getTime() - slot.startsAt.getTime() === 120 * 60 * 1000));
     await sql`UPDATE services SET duration_minutes = 90 WHERE id = ${serviceId}`;
 
+    const tuesday = DateTime.fromISO(monday, { zone: businessZone }).plus({ days: 1 }).toISODate()!;
+    for (const status of ["PENDING", "CONFIRMED"]) {
+      const activeId = await addBooking(firstId!, status, DateTime.fromISO(monday, { zone: businessZone }).set({ hour: 12, minute: 30 }));
+      assert.deepEqual(await createBooking(firstId!, monday, "12:30", serviceId), { reason: "ACTIVE_BOOKING" }, `${status} futura comunica la reserva activa incluso en el mismo slot`);
+      assert.deepEqual(await createBooking(firstId!, tuesday, "12:30", serviceId), { reason: "ACTIVE_BOOKING" }, `${status} futura bloquea una segunda reserva`);
+      await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${activeId}`;
+    }
+
+    const expiredConfirmed = await addBooking(firstId!, "CONFIRMED", DateTime.now().minus({ hours: 5 }));
+    const afterExpired = await createBooking(firstId!, tuesday, "12:30", serviceId);
+    assert.equal(typeof afterExpired, "string", "una reserva CONFIRMED vencida no bloquea otra");
+    if (typeof afterExpired === "string") await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${afterExpired}`;
+    await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${expiredConfirmed}`;
+
+    for (const status of ["CANCELLED", "COMPLETED", "NO_SHOW"]) {
+      const inactiveId = await addBooking(firstId!, status, DateTime.fromISO(monday, { zone: businessZone }).plus({ days: 7 }).set({ hour: 12, minute: 30 }));
+      const afterInactive = await createBooking(firstId!, tuesday, "12:30", serviceId);
+      assert.equal(typeof afterInactive, "string", `${status} no bloquea una nueva reserva`);
+      if (typeof afterInactive === "string") await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${afterInactive}`;
+      await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${inactiveId}`;
+    }
+
+    const sameCustomerResults = await Promise.all([
+      createBooking(firstId!, monday, "12:30", serviceId),
+      createBooking(firstId!, tuesday, "12:30", serviceId),
+    ]);
+    assert.equal(sameCustomerResults.filter((result) => typeof result === "string").length, 1, "dos solicitudes simultáneas del cliente crean como máximo una reserva");
+    assert.equal(sameCustomerResults.filter((result) => result && typeof result !== "string" && result.reason === "ACTIVE_BOOKING").length, 1);
+    for (const result of sameCustomerResults) {
+      if (typeof result === "string") await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${result}`;
+    }
+
+    const noShowIds: string[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      const noShowId = await addBooking(thirdId!, "CONFIRMED", DateTime.now().minus({ days: 15 - index }));
+      noShowIds.push(noShowId);
+      assert.equal(await updateBookingStatus(noShowId, "NO_SHOW", firstId!), true);
+    }
+    assert.equal((await sql`SELECT count(*)::int AS count FROM customer_no_shows WHERE customer_id = ${thirdId!}`)[0].count, 4);
+    const beforeThreshold = await createBooking(thirdId!, DateTime.fromISO(monday, { zone: businessZone }).plus({ days: 14 }).toISODate()!, "12:30", serviceId);
+    assert.equal(typeof beforeThreshold, "string", "menos de cinco inasistencias no suspende");
+    if (typeof beforeThreshold === "string") await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${beforeThreshold}`;
+
+    const fifthNoShow = await addBooking(thirdId!, "CONFIRMED", DateTime.now().minus({ days: 11 }).set({ hour: 14, minute: 30 }));
+    noShowIds.push(fifthNoShow);
+    const concurrentNoShowTransitions = await Promise.all([
+      updateBookingStatus(fifthNoShow, "NO_SHOW", firstId!),
+      updateBookingStatus(fifthNoShow, "NO_SHOW", firstId!),
+    ]);
+    assert.equal(concurrentNoShowTransitions.filter(Boolean).length, 1, "dos cambios concurrentes solo aplican una transición");
+    const firstSuspension = await sql`SELECT no_show_count, starts_at, suspended_until, suspended_until = starts_at + interval '3 months' AS exact_duration FROM customer_suspensions WHERE customer_id = ${thirdId!}`;
+    assert.equal(firstSuspension.length, 1);
+    assert.equal(firstSuspension[0].no_show_count, 5);
+    assert.equal(firstSuspension[0].exact_duration, true);
+
+    const duringSuspension = await createBooking(thirdId!, DateTime.fromISO(monday, { zone: businessZone }).plus({ days: 21 }).toISODate()!, "12:30", serviceId);
+    assert.equal(typeof duringSuspension, "object");
+    assert.equal(duringSuspension && typeof duringSuspension !== "string" ? duringSuspension.reason : null, "SUSPENDED");
+    await sql`UPDATE customer_suspensions SET starts_at = now() - interval '2 months', suspended_until = now() - interval '1 second' WHERE customer_id = ${thirdId!} AND no_show_count = 5`;
+    const afterSuspension = await createBooking(thirdId!, DateTime.fromISO(monday, { zone: businessZone }).plus({ days: 21 }).toISODate()!, "12:30", serviceId);
+    assert.equal(typeof afterSuspension, "string", "al vencer la suspensión se permite reservar");
+    if (typeof afterSuspension === "string") await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${afterSuspension}`;
+    assert.equal((await sql`SELECT count(*)::int AS count FROM customer_no_shows WHERE customer_id = ${thirdId!}`)[0].count, 5, "el historial no se reinicia al vencer la suspensión");
+
+    for (let index = 0; index < 5; index += 1) {
+      const noShowId = await addBooking(thirdId!, "CONFIRMED", DateTime.now().minus({ days: 10 - index }));
+      noShowIds.push(noShowId);
+      assert.equal(await updateBookingStatus(noShowId, "NO_SHOW", firstId!), true);
+    }
+    assert.equal(await updateBookingStatus(noShowIds[9], "CONFIRMED", firstId!), false, "una reserva NO_SHOW no se reabre mediante una transición ordinaria");
+    assert.equal(await updateBookingStatus(noShowIds[9], "NO_SHOW", firstId!), false, "repetir NO_SHOW no registra otra inasistencia");
+    assert.equal((await sql`SELECT status FROM bookings WHERE id = ${noShowIds[9]}`)[0].status, "NO_SHOW");
+    const noShowTotal = await sql`SELECT count(*)::int AS count FROM customer_no_shows WHERE customer_id = ${thirdId!}`;
+    const suspensionTotal = await sql`SELECT count(*)::int AS count FROM customer_suspensions WHERE customer_id = ${thirdId!}`;
+    assert.equal(noShowTotal[0].count, 10, "una reserva NO_SHOW repetida no duplica el historial");
+    assert.equal(suspensionTotal[0].count, 2, "se crea una suspensión nueva al llegar a diez inasistencias");
+    await sql`UPDATE customer_suspensions SET starts_at = now() - interval '2 months', suspended_until = now() + interval '1 month' WHERE customer_id = ${thirdId!} AND no_show_count = 5`;
+    const activeSuspensions = await sql`
+      SELECT count(*)::int AS count, MAX(suspended_until) AS latest_until
+      FROM customer_suspensions
+      WHERE customer_id = ${thirdId!} AND suspended_until > now()
+    `;
+    assert.equal(activeSuspensions[0].count, 2, "el escenario tiene dos suspensiones vigentes");
+    const withMultipleSuspensions = await createBooking(thirdId!, DateTime.fromISO(monday, { zone: businessZone }).plus({ days: 28 }).toISODate()!, "12:30", serviceId);
+    assert.equal(withMultipleSuspensions && typeof withMultipleSuspensions !== "string" ? withMultipleSuspensions.reason : null, "SUSPENDED");
+    assert.equal(
+      withMultipleSuspensions && typeof withMultipleSuspensions !== "string" && withMultipleSuspensions.reason === "SUSPENDED" ? withMultipleSuspensions.until.getTime() : null,
+      new Date(activeSuspensions[0].latest_until).getTime(),
+      "la lógica devuelve el vencimiento más lejano entre suspensiones vigentes",
+    );
+    await sql`UPDATE customer_suspensions SET starts_at = now() - interval '2 months', suspended_until = now() - interval '1 second' WHERE customer_id = ${thirdId!}`;
+    const afterAllSuspensions = await createBooking(thirdId!, DateTime.fromISO(monday, { zone: businessZone }).plus({ days: 35 }).toISODate()!, "12:30", serviceId);
+    assert.equal(typeof afterAllSuspensions, "string", "cuando vencen todas las suspensiones el cliente puede reservar");
+    if (typeof afterAllSuspensions === "string") await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${afterAllSuspensions}`;
+
     const results = await Promise.allSettled([
       createBooking(firstId!, monday, "14:30", serviceId),
       createBooking(secondId!, monday, "14:30", serviceId),
@@ -126,7 +245,11 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     const accepted = results.filter((result) => result.status === "fulfilled" && result.value !== null);
     assert.equal(accepted.length, 1, "solo una reserva del mismo slot puede confirmarse");
     assert.deepEqual((await availableSlots(monday, serviceId)).slots.map((item) => item.time), ["12:30", "16:00", "17:30"]);
-    assert.ok(await createBooking(secondId!, monday, "16:00", serviceId));
+    const winnerIndex = results.findIndex((result) => result.status === "fulfilled" && typeof result.value === "string");
+    const availableCustomerId = winnerIndex === 0 ? secondId! : firstId!;
+    const availableSlotBooking = await createBooking(availableCustomerId, monday, "16:00", serviceId);
+    assert.equal(typeof availableSlotBooking, "string");
+    if (typeof availableSlotBooking === "string") await sql`UPDATE bookings SET status = 'CANCELLED' WHERE id = ${availableSlotBooking}`;
     await sql`UPDATE bookings SET status = 'CANCELLED' WHERE customer_id IN (${firstId!}, ${secondId!})`;
     assert.ok((await availableSlots(monday, serviceId)).slots.some((item) => item.time === "14:30"));
 
@@ -181,12 +304,108 @@ test("PostgreSQL: tokens, horarios y dos reservas concurrentes", { skip: !proces
     await assert.rejects(googleBusy(rangeStart, rangeStart.plus({ days: 1 })), /Google freeBusy: 503/);
   } finally {
     globalThis.fetch = originalFetch;
-    if (firstId || secondId) {
-      await sql`DELETE FROM reviews WHERE customer_id IN (${firstId || "00000000-0000-0000-0000-000000000000"}, ${secondId || "00000000-0000-0000-0000-000000000000"})`;
-      await sql`DELETE FROM bookings WHERE customer_id IN (${firstId || "00000000-0000-0000-0000-000000000000"}, ${secondId || "00000000-0000-0000-0000-000000000000"})`;
-      await sql`DELETE FROM google_calendar_connections WHERE owner_id IN (${firstId || "00000000-0000-0000-0000-000000000000"}, ${secondId || "00000000-0000-0000-0000-000000000000"})`;
-      await sql`DELETE FROM users WHERE id IN (${firstId || "00000000-0000-0000-0000-000000000000"}, ${secondId || "00000000-0000-0000-0000-000000000000"})`;
+    if (firstId || secondId || thirdId) {
+      const first = firstId || "00000000-0000-0000-0000-000000000000";
+      const second = secondId || "00000000-0000-0000-0000-000000000000";
+      const third = thirdId || "00000000-0000-0000-0000-000000000000";
+      await sql`DELETE FROM reviews WHERE customer_id IN (${first}, ${second}, ${third})`;
+      await sql`DELETE FROM customer_no_shows WHERE customer_id IN (${first}, ${second}, ${third})`;
+      await sql`DELETE FROM bookings WHERE customer_id IN (${first}, ${second}, ${third})`;
+      await sql`DELETE FROM customer_suspensions WHERE customer_id IN (${first}, ${second}, ${third})`;
+      await sql`DELETE FROM google_calendar_connections WHERE owner_id IN (${first}, ${second}, ${third})`;
+      await sql`DELETE FROM users WHERE id IN (${first}, ${second}, ${third})`;
     }
-    await sql`DELETE FROM pending_users WHERE email IN (${email}, ${expiredEmail})`;
+    await sql`DELETE FROM pending_users WHERE email IN (${email}, ${secondEmail}, ${thirdEmail}, ${expiredEmail})`;
+  }
+});
+
+test("PostgreSQL: migración 007 backfillea inasistencias y suspensiones históricas", { skip: !process.env.DATABASE_URL && "DATABASE_URL no configurada" }, async () => {
+  const sql = db();
+  const migrationName = "007_customer_no_shows_and_suspensions.sql";
+  const migration = await readFile(new URL("../../db/migrations/007_customer_no_shows_and_suspensions.sql", import.meta.url), "utf8");
+  const schemaName = `test_migration_007_${randomToken().replace(/[^a-zA-Z0-9]/g, "").slice(0, 12)}`;
+
+  await sql.unsafe(`CREATE SCHEMA "${schemaName}"`);
+  try {
+    await sql.begin(async (transaction) => {
+      await transaction`SELECT set_config('search_path', ${schemaName}, true)`;
+      await transaction`CREATE TABLE schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`;
+      await transaction`CREATE TABLE users (id uuid PRIMARY KEY)`;
+      await transaction`CREATE TABLE services (id uuid PRIMARY KEY)`;
+      await transaction`CREATE TABLE bookings (
+        id uuid PRIMARY KEY,
+        customer_id uuid NOT NULL REFERENCES users(id),
+        service_id uuid NOT NULL REFERENCES services(id),
+        starts_at timestamptz NOT NULL,
+        ends_at timestamptz NOT NULL,
+        status text NOT NULL,
+        updated_at timestamptz NOT NULL
+      )`;
+      await transaction`CREATE TABLE booking_events (
+        id bigserial PRIMARY KEY,
+        booking_id uuid NOT NULL REFERENCES bookings(id),
+        event text NOT NULL,
+        created_at timestamptz NOT NULL
+      )`;
+
+      const customerId = randomUUID();
+      const serviceId = randomUUID();
+      const eventDates = Array.from({ length: 10 }, (_, index) => new Date(Date.UTC(2024, 0, 1 + index, 15)));
+      await transaction`INSERT INTO users (id) VALUES (${customerId})`;
+      await transaction`INSERT INTO services (id) VALUES (${serviceId})`;
+      for (const recordedAt of eventDates) {
+        const bookingId = randomUUID();
+        await transaction`
+          INSERT INTO bookings (id, customer_id, service_id, starts_at, ends_at, status, updated_at)
+          VALUES (${bookingId}, ${customerId}, ${serviceId}, ${recordedAt}, ${new Date(recordedAt.getTime() + 90 * 60 * 1000)}, 'NO_SHOW', ${recordedAt})
+        `;
+        await transaction`
+          INSERT INTO booking_events (booking_id, event, created_at)
+          VALUES (${bookingId}, 'NO_SHOW', ${recordedAt})
+        `;
+      }
+
+      const existingTables = await transaction`SELECT to_regclass('customer_no_shows') AS no_shows, to_regclass('customer_suspensions') AS suspensions`;
+      assert.equal(existingTables[0].no_shows, null);
+      assert.equal(existingTables[0].suspensions, null);
+
+      async function applyMigrationIfPending() {
+        const existing = await transaction`SELECT name FROM schema_migrations WHERE name = ${migrationName}`;
+        if (existing.length) return false;
+        await transaction.unsafe(migration);
+        await transaction`INSERT INTO schema_migrations (name) VALUES (${migrationName})`;
+        return true;
+      }
+
+      assert.equal(await applyMigrationIfPending(), true);
+      const noShows = await transaction`
+        SELECT count(*)::int AS count, count(DISTINCT booking_id)::int AS unique_count
+        FROM customer_no_shows WHERE customer_id = ${customerId}
+      `;
+      assert.equal(noShows[0].count, 10);
+      assert.equal(noShows[0].unique_count, 10);
+
+      const suspensions = await transaction`
+        SELECT no_show_count, starts_at, suspended_until,
+          suspended_until = starts_at + interval '3 months' AS exact_duration
+        FROM customer_suspensions WHERE customer_id = ${customerId}
+        ORDER BY no_show_count
+      `;
+      assert.equal(suspensions.length, 2);
+      assert.deepEqual(suspensions.map((item) => Number(item.no_show_count)), [5, 10]);
+      for (const [index, noShowCount] of [5, 10].entries()) {
+        const expectedStart = eventDates[noShowCount - 1];
+        assert.equal(new Date(suspensions[index].starts_at).toISOString(), expectedStart.toISOString());
+        assert.equal(suspensions[index].exact_duration, true);
+      }
+
+      assert.equal(await applyMigrationIfPending(), false, "el runner omite la migración ya registrada");
+      const noShowsAfterSecondRun = await transaction`SELECT count(*)::int AS count FROM customer_no_shows WHERE customer_id = ${customerId}`;
+      const suspensionsAfterSecondRun = await transaction`SELECT count(*)::int AS count FROM customer_suspensions WHERE customer_id = ${customerId}`;
+      assert.equal(noShowsAfterSecondRun[0].count, 10);
+      assert.equal(suspensionsAfterSecondRun[0].count, 2);
+    });
+  } finally {
+    await sql.unsafe(`DROP SCHEMA "${schemaName}" CASCADE`);
   }
 });
