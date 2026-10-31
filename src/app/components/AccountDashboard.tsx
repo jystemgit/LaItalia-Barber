@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import AdminBookings from "@/app/components/AdminBookings";
+import AdminCustomers from "@/app/components/AdminCustomers";
 import AdminGoogleCalendar from "@/app/components/AdminGoogleCalendar";
 import ReviewModeration from "@/app/components/ReviewModeration";
 import ToastNotification, { useToast } from "@/app/components/ToastNotification";
@@ -203,7 +204,7 @@ export default function AccountDashboard({ user }: { user: User }) {
       {bookings.map((booking) => {
         const review = reviews.find((item) => item.booking_id === booking.id);
         return <article className="app-row" key={booking.id}>
-          <strong>{booking.service_name}</strong><span>{new Date(booking.starts_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "medium", timeStyle: "short" })} · {booking.status}</span>
+          <strong>{booking.service_name}</strong><span>{new Date(booking.starts_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "medium", timeStyle: "short" })} · {booking.status === "NO_SHOW" ? "No Vino" : booking.status}</span>
           {(booking.status === "PENDING" || booking.status === "CONFIRMED") && now !== null && new Date(booking.starts_at).getTime() > now && <button
             type="button"
             disabled={cancellingBookingId !== null}
@@ -244,6 +245,7 @@ export default function AccountDashboard({ user }: { user: User }) {
     </div>}
     {user.role === "ADMIN" && <AdminGoogleCalendar />}
     {user.role === "ADMIN" && <AdminBookings />}
+    {user.role === "ADMIN" && <AdminCustomers />}
     {user.role === "ADMIN" && <ReviewModeration />}
   </main>;
 }

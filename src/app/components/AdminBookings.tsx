@@ -25,7 +25,7 @@ const filters: { status: StatusFilter; label: string }[] = [
   { status: "PENDING", label: "Pendientes" },
   { status: "COMPLETED", label: "Completadas" },
   { status: "CANCELLED", label: "Canceladas" },
-  { status: "NO_SHOW", label: "No show" },
+  { status: "NO_SHOW", label: "No Vino" },
 ];
 
 const statusLabels: Record<BookingStatus, string> = {
@@ -33,7 +33,7 @@ const statusLabels: Record<BookingStatus, string> = {
   CONFIRMED: "Confirmada",
   COMPLETED: "Completada",
   CANCELLED: "Cancelada",
-  NO_SHOW: "No show",
+  NO_SHOW: "No Vino",
 };
 
 const calendarStatusLabels: Record<CalendarSyncStatus, string> = {
@@ -47,7 +47,7 @@ const transitions: Partial<Record<BookingStatus, Transition[]>> = {
   CONFIRMED: [
     { status: "COMPLETED", label: "Completar" },
     { status: "CANCELLED", label: "Cancelar", confirm: "¿Cancelar esta reserva?" },
-    { status: "NO_SHOW", label: "Marcar no show", confirm: "¿Marcar esta reserva como no show?" },
+    { status: "NO_SHOW", label: "Marcar No Vino", confirm: "¿Marcar esta reserva como No Vino?" },
   ],
   PENDING: [
     { status: "CONFIRMED", label: "Confirmar" },
